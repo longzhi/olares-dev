@@ -1,0 +1,56 @@
+terminusManifest.version: '0.7.1'
+terminusManifest.type: app
+
+metadata:
+  name: {{ APP_NAME }}
+  title: {{ APP_TITLE }}
+  description: "{{ APP_DESCRIPTION }}"
+  icon: {{ ICON_URL }}
+  version: {{ CHART_VERSION | default: "0.1.0" }}
+  categories:
+    - {{ CATEGORY | default: "Productivity" }}
+  rating: 0
+
+permission:
+  appData: true
+  # Uncomment if user data access needed:
+  # userData:
+  #   - Home
+  #   - Documents
+
+spec:
+  requiredMemory: {{ REQUIRED_MEMORY | default: "128Mi" }}
+  requiredDisk: {{ REQUIRED_DISK | default: "512Mi" }}
+  requiredCpu: {{ REQUIRED_CPU | default: "100m" }}
+  limitedMemory: {{ LIMITED_MEMORY | default: "512Mi" }}
+  limitedCpu: {{ LIMITED_CPU | default: "500m" }}
+  supportArch:
+    - amd64
+    - arm64
+
+entrances:
+  - name: {{ APP_NAME }}-web
+    title: {{ APP_TITLE }}
+    icon: {{ ICON_URL }}
+    host: {{ APP_NAME }}-svc
+    port: {{ SERVICE_PORT | default: 3000 }}
+    authLevel: private
+    openMethod: default
+
+# Uncomment middleware sections as needed:
+
+# middleware:
+#   postgres:
+#     username: {{ APP_NAME }}_user
+#     password: {{ "{{" }} .Values.postgres.password {{ "}}" }}
+#     databases:
+#       - name: {{ APP_NAME }}_db
+#         distributed: false
+
+#   redis:
+#     password: {{ "{{" }} .Values.redis.password {{ "}}" }}
+#     namespace: {{ APP_NAME }}-cache
+
+options:
+  analytics:
+    enabled: false

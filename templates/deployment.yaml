@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ "{{" }} .Release.Name {{ "}}" }}
+  namespace: {{ "{{" }} .Release.Namespace {{ "}}" }}
+  labels:
+    app: {{ "{{" }} .Release.Name {{ "}}" }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ "{{" }} .Release.Name {{ "}}" }}
+  template:
+    metadata:
+      labels:
+        app: {{ "{{" }} .Release.Name {{ "}}" }}
+    spec:
+      containers:
+        - name: {{ "{{" }} .Release.Name {{ "}}" }}
+          image: "{{ DOCKER_IMAGE }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ CONTAINER_PORT | default: 3000 }}
+              protocol: TCP
+          
+          env:
+            # App Data Directory
+            - name: APP_DATA_DIR
+              value: /app/data
+            
+            # Olares User Context
+            - name: OLARES_USER
+              value: {{ "{{" }} .Values.bfl.username {{ "}}" }}
+            
+            # ----------------------------------------
+            # PostgreSQL (uncomment if using database)
+            # ----------------------------------------
+            # - name: DATABASE_URL
+            #   value: "postgresql://{{ "{{" }} .Values.postgres.username {{ "}}" }}:{{ "{{" }} .Values.postgres.password {{ "}}" }}@{{ "{{" }} .Values.postgres.host {{ "}}" }}:{{ "{{" }} .Values.postgres.port {{ "}}" }}/{{ "{{" }} .Values.postgres.databases.{{ APP_NAME }}_db {{ "}}" }}"
+            
+            # ----------------------------------------
+            # Redis (uncomment if using cache)
+            # ----------------------------------------
+            # - name: REDIS_URL
+            #   value: "redis://:{{ "{{" }} .Values.redis.password {{ "}}" }}@{{ "{{" }} .Values.redis.host {{ "}}" }}:{{ "{{" }} .Values.redis.port {{ "}}" }}"
+          
+          volumeMounts:
+            - name: app-data
+              mountPath: /app/data
+          
+          resources:
+            requests:
+              cpu: {{ REQUIRED_CPU | default: "100m" }}
+              memory: {{ REQUIRED_MEMORY | default: "128Mi" }}
+            limits:
+              cpu: {{ LIMITED_CPU | default: "500m" }}
+              memory: {{ LIMITED_MEMORY | default: "512Mi" }}
+      
+      volumes:
+        - name: app-data
+          hostPath:
+            type: DirectoryOrCreate
+            path: {{ "{{" }} .Values.userspace.appData {{ "}}" }}/{{ "{{" }} .Release.Name {{ "}}" }}

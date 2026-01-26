@@ -1,0 +1,9 @@
+apiVersion: v2
+name: {{ APP_NAME }}
+version: {{ CHART_VERSION | default: "0.1.0" }}
+appVersion: "{{ APP_VERSION | default: "1.0.0" }}"
+description: "{{ APP_DESCRIPTION }}"
+keywords:
+  - {{ CATEGORY | default: "Productivity" }}
+home: {{ HOME_URL | optional }}
+icon: {{ ICON_URL | optional }}
