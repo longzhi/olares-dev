@@ -1,0 +1,55 @@
+#!/bin/bash
+set -e
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${GREEN}Olares DevBox Deployment Environment Initialization${NC}"
+echo ""
+
+KUBECTL_PATH="/tmp/kubectl"
+
+if [ ! -f "$KUBECTL_PATH" ]; then
+    echo -e "${YELLOW}kubectl not found, downloading...${NC}"
+    curl -LO "https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl" -o "$KUBECTL_PATH" 2>/dev/null
+    chmod +x "$KUBECTL_PATH"
+    echo -e "${GREEN}✓ kubectl installed${NC}"
+else
+    echo -e "${GREEN}✓ kubectl already installed${NC}"
+fi
+
+if [ -f /var/run/secrets/kubernetes.io/serviceaccount/namespace ]; then
+    NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+    echo -e "${GREEN}✓ Namespace: $NAMESPACE${NC}"
+else
+    echo -e "${RED}✗ Not running in Kubernetes${NC}"
+    exit 1
+fi
+
+CAN_CREATE=$("$KUBECTL_PATH" auth can-i create deployments -n "$NAMESPACE" 2>/dev/null || echo "no")
+if [ "$CAN_CREATE" = "yes" ]; then
+    echo -e "${GREEN}✓ RBAC permissions configured${NC}"
+else
+    echo -e "${RED}✗ Missing RBAC permissions${NC}"
+    echo "  Need: create deployments, services, pods"
+    exit 1
+fi
+
+if [ ! -f /root/.local/bin/olares-deploy ]; then
+    echo -e "${YELLOW}Copying deployment scripts...${NC}"
+    cp /tmp/opencode-deploy-v2.sh /root/.local/bin/olares-deploy 2>/dev/null || echo "Script not in /tmp"
+    cp /tmp/opencode-manage.sh /root/.local/bin/olares-manage 2>/dev/null || echo "Script not in /tmp"
+    cp /tmp/opencode-urls.sh /root/.local/bin/olares-urls 2>/dev/null || echo "Script not in /tmp"
+    chmod +x /root/.local/bin/olares-* 2>/dev/null
+fi
+
+echo -e "${GREEN}✓ Deployment scripts ready${NC}"
+echo ""
+echo "Available commands:"
+echo "  olares-deploy <app> <image> <port> [command]"
+echo "  olares-manage list|info|logs|delete <app>"
+echo "  olares-urls"
+echo ""
+echo -e "${GREEN}Environment ready for deployment!${NC}"

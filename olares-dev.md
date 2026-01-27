@@ -8,6 +8,8 @@ Use this skill when:
 - Task involves creating Helm charts for Olares ecosystem
 - User needs to package a Docker image as an Olares app
 - Database provisioning (PostgreSQL, Redis, MongoDB, etc.) on Olares is needed
+- **User completes development and needs to deploy to Olares DevBox (AUTOMATIC)**
+- **User asks to "deploy", "publish", or "make it accessible" after development**
 
 ## Overview
 
@@ -18,6 +20,569 @@ Olares is a self-hosted cloud operating system. Applications are deployed as Hel
 - **No REST API** for deployment - use Studio UI or olares-cli
 - **System Services**: PostgreSQL, Redis, MongoDB, Zinc (search) are pre-installed
 - **User Isolation**: Each user gets isolated app instances
+
+**TWO DEPLOYMENT METHODS:**
+1. **DevBox Quick Deploy** (Recommended for development) - Direct kubectl deployment, automatic external access
+2. **Market Package** (For publishing) - Helm chart package via Studio UI
+
+---
+
+## 🚀 DEVBOX QUICK DEPLOY (Automatic Deployment After Development)
+
+**When to Use:** User completes application development in OpenCode and wants immediate deployment.
+
+### Prerequisites Check
+
+Before deploying, verify:
+```bash
+# Check kubectl is available
+which /tmp/kubectl || echo "Need to install kubectl"
+
+# Check current namespace
+cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
+
+# Check RBAC permissions
+/tmp/kubectl auth can-i create deployments -n $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+```
+
+### Quick Deploy Script
+
+**Location:** `/tmp/opencode-deploy-v2.sh`
+
+**Usage:**
+```bash
+/tmp/opencode-deploy-v2.sh <app-name> <image> <port> [startup-command]
+```
+
+**Script ensures it exists and is executable:**
+```bash
+if [ ! -f /tmp/opencode-deploy-v2.sh ]; then
+    echo "ERROR: Deployment script not found!"
+    echo "The script should be at /tmp/opencode-deploy-v2.sh"
+    exit 1
+fi
+chmod +x /tmp/opencode-deploy-v2.sh
+```
+
+### Automatic Deployment Workflow
+
+**When user completes development:**
+
+1. **Detect Application Type**
+   ```python
+   frameworks = {
+       'flask': {'image': 'python:3.11-slim', 'port': 5000, 'detect': 'app.py with Flask'},
+       'fastapi': {'image': 'python:3.11-slim', 'port': 8000, 'detect': 'main.py with FastAPI'},
+       'express': {'image': 'node:20-slim', 'port': 3000, 'detect': 'package.json with express'},
+       'django': {'image': 'python:3.11-slim', 'port': 8000, 'detect': 'manage.py'}
+   }
+   ```
+
+2. **Generate App Name**
+   ```python
+   import re
+   app_name = re.sub(r'[^a-z0-9-]', '-', user_provided_name.lower())
+   app_name = app_name.strip('-')[:50]  # Max 50 chars
+   ```
+
+3. **Build Startup Command**
+   - Flask: `pip install flask && python app.py`
+   - FastAPI: `pip install fastapi uvicorn && uvicorn main:app --host 0.0.0.0 --port 8000`
+   - Express: `npm install && npm start`
+   - Django: `pip install django && python manage.py runserver 0.0.0.0:8000`
+
+4. **Execute Deployment**
+   ```bash
+   /tmp/opencode-deploy-v2.sh "$APP_NAME" "$IMAGE" "$PORT" "$COMMAND"
+   ```
+
+5. **Extract External URL**
+   ```bash
+   # Get the third-level domain from deployment
+   THIRD_LEVEL=$(kubectl get deployment "$APP_NAME" -n "$NAMESPACE" \
+       -o jsonpath='{.metadata.annotations.applications\.app\.bytetrade\.io/default-thirdlevel-domains}' \
+       | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['thirdLevelDomain'])")
+   
+   # Get user's Olares domain from namespace or config
+   DOMAIN="onetest02.olares.com"  # Extract from environment
+   
+   EXTERNAL_URL="https://${THIRD_LEVEL}.${DOMAIN}"
+   ```
+
+6. **Report to User**
+   ```
+   ✅ Deployment successful!
+   
+   Your application is now live:
+   🌐 External URL: https://xxxxx-5000.onetest02.olares.com
+   
+   Internal URL (cluster only):
+   http://app-name-svc.namespace.svc.cluster.local:5000
+   
+   View logs: /tmp/opencode-manage.sh logs app-name
+   Manage: /tmp/opencode-manage.sh info app-name
+   ```
+
+### External Access Configuration
+
+**Olares URL Format:**
+```
+https://{random-hash}-{port}.{username}.olares.com
+
+Example:
+https://dd176ae5-5000.onetest02.olares.com
+         ↑          ↑      ↑
+    random hash  port   username
+```
+
+**Required Annotations** (automatically added by script):
+```yaml
+annotations:
+  meta.helm.sh/release-name: app-name
+  meta.helm.sh/release-namespace: namespace
+  applications.app.bytetrade.io/entrances: '[{"name":"app-name","host":"app-name-svc","port":5000,"title":"app-name","authLevel":"private","openMethod":"default"}]'
+  applications.app.bytetrade.io/default-thirdlevel-domains: '[{"appName":"app-name","entranceName":"app-name","thirdLevelDomain":"random-hash-port"}]'
+  applications.app.bytetrade.io/icon: https://app.cdn.olares.com/appstore/default/defaulticon.webp
+  applications.app.bytetrade.io/title: app-name
+```
+
+### Management Commands
+
+**Location:** `/tmp/opencode-manage.sh`
+
+```bash
+# List all deployed apps
+/tmp/opencode-manage.sh list
+
+# Show app details and URL
+/tmp/opencode-manage.sh info <app-name>
+
+# View logs
+/tmp/opencode-manage.sh logs <app-name>
+/tmp/opencode-manage.sh logs <app-name> -f  # Follow
+
+# Test connectivity
+/tmp/opencode-manage.sh test <app-name>
+
+# Delete app
+/tmp/opencode-manage.sh delete <app-name>
+```
+
+### Display All External URLs
+
+**Location:** `/tmp/opencode-urls.sh`
+
+```bash
+# Show all deployed apps with external URLs
+/tmp/opencode-urls.sh
+```
+
+Output:
+```
+═══════════════════════════════════════════════
+  OpenCode 部署的应用 - 外部访问地址
+═══════════════════════════════════════════════
+
+▶ flask-app
+  状态: ✅ Running (1/1)
+  端口: 5000
+  外部访问: https://dd176ae5-5000.onetest02.olares.com
+  集群内部: http://flask-app-svc.namespace.svc.cluster.local:5000
+
+▶ express-api
+  状态: ✅ Running (1/1)
+  端口: 3000
+  外部访问: https://c113fc1b-3000.onetest02.olares.com
+  集群内部: http://express-api-svc.namespace.svc.cluster.local:3000
+```
+
+### Network Architecture
+
+**New Architecture (Unified Entry + Nginx Reverse Proxy):**
+```
+User Browser
+    ↓ HTTPS
+https://b0c54349-3000.onetest02.olares.com/{app-name}/
+    ↓ DNS Resolution
+Olares Ingress Controller (TLS termination)
+    ↓ HTTP
+OpenCode Container (port 3000 - unified entry)
+    ↓
+Nginx Reverse Proxy (listening on 3000)
+    ↓ Path-based routing
+    ├─ /express-demo/ → express-demo-svc:3000
+    ├─ /flask-app/    → flask-app-svc:5000
+    ├─ /test-app/     → test-app-svc:8000
+    └─ /opencode/     → localhost:4096 (OpenCode Server mode)
+    ↓
+Service: app-name-svc (ClusterIP)
+    ↓ TCP
+Pod: app-name-xxx (10.233.x.x:port)
+    ↓
+Application (0.0.0.0:port)
+```
+
+**Key Points:**
+- **Unified Entry**: All external requests come through port 3000 (OpenCode default)
+- **Path Routing**: Different URL paths map to different services
+- **Automatic Configuration**: Nginx configs auto-generated for each deployment
+- **Fixed OpenCode Mapping**: Port 4096 always mapped for OpenCode Server mode
+
+**Legacy Architecture (Direct Service Access - Deprecated):**
+```
+User Browser
+    ↓ HTTPS
+https://xxxxx-5000.onetest02.olares.com
+    ↓ DNS Resolution
+Olares Ingress Controller
+    ↓ HTTP (internal)
+Service: app-name-svc (ClusterIP:5000)
+    ↓ TCP
+Pod: app-name-xxx (10.233.x.x:5000)
+    ↓
+Application (0.0.0.0:5000)
+```
+
+### Nginx Reverse Proxy Configuration
+
+**IMPORTANT**: After each deployment, the Nginx reverse proxy MUST be updated to route external traffic.
+
+#### Automatic Configuration Tool
+
+**Location:** `/root/.local/bin/olares-nginx-config`
+
+**Purpose:**
+- Automatically scans all deployed applications
+- Generates Nginx reverse proxy configurations
+- Updates routing rules for external access
+- Includes fixed mapping for OpenCode Server mode (port 4096)
+
+**Usage:**
+```bash
+# After deploying any application, run:
+python3 /root/.local/bin/olares-nginx-config
+```
+
+**Output:**
+```
+Olares Nginx 配置生成器
+============================================================
+
+1. 扫描已部署的应用...
+  找到 3 个应用:
+    - express-demo (端口 3000)
+    - flask-app (端口 5000)
+    - test-app (端口 8000)
+
+2. 生成 Nginx 配置...
+✓ 生成配置: /etc/nginx/conf.d/dev/express-demo.conf
+✓ 生成配置: /etc/nginx/conf.d/dev/flask-app.conf
+✓ 生成配置: /etc/nginx/conf.d/dev/test-app.conf
+✓ 生成固定配置: /etc/nginx/conf.d/dev/opencode-server.conf (port 4096)
+
+3. 应用配置...
+✓ Nginx 配置测试通过
+✓ Nginx 重载成功
+
+✅ 配置完成！
+```
+
+#### External Access URLs
+
+After Nginx configuration, applications are accessible via:
+
+**Pattern 1: Application Name Path**
+```
+https://{hash}-3000.{domain}/{app-name}/
+
+Examples:
+https://b0c54349-3000.onetest02.olares.com/express-demo/
+https://b0c54349-3000.onetest02.olares.com/flask-app/
+https://b0c54349-3000.onetest02.olares.com/test-app/
+```
+
+**Pattern 2: Port Number Path**
+```
+https://{hash}-3000.{domain}/{port}/
+
+Examples:
+https://b0c54349-3000.onetest02.olares.com/3000/  → express-demo
+https://b0c54349-3000.onetest02.olares.com/5000/  → flask-app
+https://b0c54349-3000.onetest02.olares.com/8000/  → test-app
+```
+
+**Fixed: OpenCode Server Mode**
+```
+https://{hash}-3000.{domain}/opencode/  → localhost:4096
+
+Example:
+https://b0c54349-3000.onetest02.olares.com/opencode/
+```
+
+#### Nginx Configuration Details
+
+**Generated Config Structure:**
+```nginx
+# /etc/nginx/conf.d/dev/app-name.conf
+
+# Route by application name
+location /app-name/ {
+    proxy_pass http://app-name-svc.namespace.svc.cluster.local:port/;
+    proxy_http_version 1.1;
+    
+    # Standard headers
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # WebSocket support (critical for code-server, etc.)
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $http_connection;
+    
+    # Timeouts for long-lived connections
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    
+    # Disable buffering for real-time responses
+    proxy_buffering off;
+    proxy_request_buffering off;
+}
+
+# Route by port number
+location /port/ {
+    proxy_pass http://app-name-svc.namespace.svc.cluster.local:port/;
+    # ... same config as above
+}
+```
+
+**Fixed OpenCode Server Config:**
+```nginx
+# /etc/nginx/conf.d/dev/opencode-server.conf
+
+# OpenCode Server mode (always on port 4096)
+location /opencode/ {
+    proxy_pass http://localhost:4096/;
+    proxy_http_version 1.1;
+    
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # Critical for OpenCode Server WebSocket connections
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $http_connection;
+    
+    # Long timeout for persistent connections
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 3600s;
+    proxy_read_timeout 3600s;
+    
+    proxy_buffering off;
+    proxy_request_buffering off;
+}
+```
+
+#### Complete Deployment Workflow
+
+**Standard Process:**
+```bash
+# Step 1: Deploy application
+/root/.local/bin/olares-deploy my-app python:3.11-slim 5000 "python app.py"
+
+# Step 2: Update Nginx reverse proxy (MANDATORY)
+python3 /root/.local/bin/olares-nginx-config
+
+# Step 3: Access application
+# https://b0c54349-3000.onetest02.olares.com/my-app/
+```
+
+**Automated Integration:**
+
+The deployment script at `/root/.local/bin/olares-deploy` can be modified to automatically trigger Nginx configuration update:
+
+```bash
+# Add at the end of olares-deploy script
+if [ -f /root/.local/bin/olares-nginx-config ]; then
+    echo ""
+    log_step "更新 Nginx 反向代理配置..."
+    python3 /root/.local/bin/olares-nginx-config > /dev/null 2>&1 || true
+    echo "✓ Nginx 配置已更新"
+fi
+```
+
+#### Nginx Management Commands
+
+```bash
+# Check Nginx status
+python3 /root/.local/bin/olares-nginx-config status
+
+# Manually reload Nginx
+nginx -s reload
+
+# Test Nginx configuration
+nginx -t
+
+# View Nginx logs
+tail -f /tmp/nginx-error.log
+tail -f /tmp/nginx-access.log
+
+# View generated configs
+ls -la /etc/nginx/conf.d/dev/
+cat /etc/nginx/conf.d/dev/my-app.conf
+```
+
+#### Troubleshooting Nginx Proxy
+
+**Issue: 502 Bad Gateway**
+```bash
+# Check if application Pod is running
+/tmp/kubectl get pods -n namespace -l app=my-app
+
+# Check if Service exists
+/tmp/kubectl get svc -n namespace my-app-svc
+
+# Test Service connectivity from within container
+curl http://my-app-svc.namespace.svc.cluster.local:port
+```
+
+**Issue: 404 Not Found**
+```bash
+# Check if Nginx config exists
+ls /etc/nginx/conf.d/dev/my-app.conf
+
+# Regenerate Nginx configuration
+python3 /root/.local/bin/olares-nginx-config
+
+# Check Nginx error log
+tail -f /tmp/nginx-error.log
+```
+
+**Issue: Nginx not running**
+```bash
+# Check Nginx process
+ps aux | grep nginx
+
+# Start Nginx
+nginx
+
+# Reload Nginx
+nginx -s reload
+```
+
+#### Health Check Endpoint
+
+Nginx includes a health check endpoint for monitoring:
+
+```bash
+# Test health endpoint
+curl http://localhost:3000/health
+# Expected: healthy
+
+# External access
+https://b0c54349-3000.onetest02.olares.com/health
+```
+
+### Deployment Isolation
+
+Each deployed app gets:
+- **Independent Deployment** (process isolation)
+- **Independent Service** (network isolation)
+- **Independent Resource Quota** (CPU/Memory limits)
+- **Unique External Domain** (DNS isolation)
+
+### Error Handling
+
+**If deployment fails:**
+```bash
+# Check Pod status
+/tmp/kubectl get pods -n namespace -l app=app-name
+
+# Check Pod logs
+/tmp/kubectl logs -n namespace -l app=app-name
+
+# Check events
+/tmp/kubectl get events -n namespace --sort-by=.lastTimestamp | tail -20
+
+# Describe deployment
+/tmp/kubectl describe deployment app-name -n namespace
+```
+
+**Common Issues:**
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Forbidden: cannot create deployments` | No RBAC | Request admin to apply RBAC config |
+| `ImagePullBackOff` | Image not found | Check image name and registry |
+| `CrashLoopBackOff` | App crashes on start | Check logs for errors |
+| `admission webhook denied` | Missing annotations | Use v2 script with proper annotations |
+
+### Example: Complete Automated Flow (UPDATED)
+
+**User says:** "I built a Flask todo app, deploy it"
+
+**AI Response (Updated with Nginx Reverse Proxy):**
+```
+I'll deploy your Flask app to Olares right away!
+
+Detecting configuration...
+✓ Framework: Flask
+✓ Image: python:3.11-slim
+✓ Port: 5000
+✓ App name: flask-todo-app
+
+Deploying to Olares...
+[Executing: /root/.local/bin/olares-deploy flask-todo-app python:3.11-slim 5000 "pip install flask && python app.py"]
+
+✅ Deployment successful!
+
+Updating Nginx reverse proxy...
+[Executing: python3 /root/.local/bin/olares-nginx-config]
+✓ Nginx 配置已更新
+✓ 为 flask-todo-app 生成反向代理配置
+
+Your Flask todo app is now live at:
+🌐 https://b0c54349-3000.onetest02.olares.com/flask-todo-app/
+
+Alternative access methods:
+• By port: https://b0c54349-3000.onetest02.olares.com/5000/
+• Internal: http://flask-todo-app-svc.namespace.svc.cluster.local:5000
+
+The app is running in an isolated Pod with:
+- CPU: 100m-500m
+- Memory: 128Mi-512Mi
+- Auto-scaling: Ready (if needed)
+
+Access through unified entry point (port 3000) with path-based routing.
+
+You can view logs with:
+/root/.local/bin/olares-manage logs flask-todo-app
+
+Or manage it via:
+/root/.local/bin/olares-manage info flask-todo-app
+```
+
+**Key Changes from Legacy Flow:**
+1. ✅ Uses unified entry point (port 3000) instead of individual ports
+2. ✅ Automatically updates Nginx reverse proxy after deployment
+3. ✅ Provides path-based URL: `/{app-name}/` instead of separate domain
+4. ✅ Includes fixed OpenCode Server mapping on port 4096
+
+**Legacy vs New:**
+| Aspect | Legacy | New (Current) |
+|--------|--------|---------------|
+| Access URL | `https://{hash}-5000.domain` | `https://{hash}-3000.domain/flask-todo-app/` |
+| Entry Point | Multiple ports (3000, 5000, 8000...) | Single port (3000) |
+| Routing | Direct service access | Nginx reverse proxy (path-based) |
+| Configuration | Manual for each port | Automatic Nginx config generation |
+| OpenCode Server | Not configured | Fixed mapping at `/opencode/` → port 4096 |
+
+---
+
+## 📦 MARKET PACKAGE DEPLOYMENT (For Publishing)
+
+For apps intended for Olares Market or formal distribution, use the traditional Helm chart method below.
 
 ---
 
