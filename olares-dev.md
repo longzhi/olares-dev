@@ -127,12 +127,12 @@ chmod +x /tmp/opencode-deploy-v2.sh
 
 **Olares URL Format:**
 ```
-https://{random-hash}-{port}.{username}.olares.com
+https://{random-hash}-{port}.{opencode-appid}.olares.com
 
 Example:
 https://dd176ae5-5000.onetest02.olares.com
          ↑          ↑      ↑
-    random hash  port   username
+    random hash  port   opencode-appid
 ```
 
 **Required Annotations** (automatically added by script):
