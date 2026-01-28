@@ -10,6 +10,8 @@ Use this skill when:
 - Database provisioning (PostgreSQL, Redis, MongoDB, etc.) on Olares is needed
 - **User completes development and needs to deploy to Olares DevBox (AUTOMATIC)**
 - **User asks to "deploy", "publish", or "make it accessible" after development**
+- **User wants to submit application to Olares Market**
+- **User needs to package and publish an Olares application**
 
 ## Overview
 
@@ -21,15 +23,16 @@ Olares is a self-hosted cloud operating system. Applications are deployed as Hel
 - **System Services**: PostgreSQL, Redis, MongoDB, Zinc (search) are pre-installed
 - **User Isolation**: Each user gets isolated app instances
 
-**TWO DEPLOYMENT METHODS:**
-1. **DevBox Quick Deploy** (Recommended for development) - Direct kubectl deployment, automatic external access
-2. **Market Package** (For publishing) - Helm chart package via Studio UI
+**THREE DEPLOYMENT METHODS:**
+1. **DevBox Quick Deploy** (Development) - Direct kubectl deployment with automatic external access
+2. **Market Package** (Publishing) - Helm chart package for Olares Market submission
+3. **GitHub Submission** (Public Distribution) - Submit to official Olares Market repository
 
 ---
 
 ## 🚀 DEVBOX QUICK DEPLOY (Automatic Deployment After Development)
 
-**When to Use:** User completes application development in OpenCode and wants immediate deployment.
+**When to Use:** User completes application development in OpenCode and wants immediate deployment for testing.
 
 ### Prerequisites Check
 
@@ -45,23 +48,33 @@ cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
 /tmp/kubectl auth can-i create deployments -n $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
 ```
 
-### Quick Deploy Script
+### Quick Deploy Tools
 
-**Location:** `/tmp/opencode-deploy-v2.sh`
+**Available Tools:**
+- `/root/.local/bin/olares-deploy` - Deploy applications to Kubernetes
+- `/root/.local/bin/olares-manage` - Manage deployed applications
+- `/root/.local/bin/olares-urls` - Display all application URLs
+- `/root/.local/bin/olares-nginx-config` - Update Nginx reverse proxy configuration
+
+### Deployment Script
+
+**Location:** `/root/.local/bin/olares-deploy`
 
 **Usage:**
 ```bash
-/tmp/opencode-deploy-v2.sh <app-name> <image> <port> [startup-command]
+/root/.local/bin/olares-deploy <app-name> <image> <port> [startup-command]
 ```
 
-**Script ensures it exists and is executable:**
+**Examples:**
 ```bash
-if [ ! -f /tmp/opencode-deploy-v2.sh ]; then
-    echo "ERROR: Deployment script not found!"
-    echo "The script should be at /tmp/opencode-deploy-v2.sh"
-    exit 1
-fi
-chmod +x /tmp/opencode-deploy-v2.sh
+# Deploy Flask app
+olares-deploy flask-app python:3.11-slim 5000 "pip install flask && python app.py"
+
+# Deploy Express.js app
+olares-deploy express-demo node:20-slim 3000 "npm install && npm start"
+
+# Deploy FastAPI app
+olares-deploy api-server python:3.11-slim 8000 "pip install fastapi uvicorn && uvicorn main:app --host 0.0.0.0"
 ```
 
 ### Automatic Deployment Workflow
@@ -93,10 +106,15 @@ chmod +x /tmp/opencode-deploy-v2.sh
 
 4. **Execute Deployment**
    ```bash
-   /tmp/opencode-deploy-v2.sh "$APP_NAME" "$IMAGE" "$PORT" "$COMMAND"
+   /root/.local/bin/olares-deploy "$APP_NAME" "$IMAGE" "$PORT" "$COMMAND"
    ```
 
-5. **Extract External URL**
+5. **Update Nginx Reverse Proxy (MANDATORY)**
+   ```bash
+   python3 /root/.local/bin/olares-nginx-config
+   ```
+
+6. **Extract External URL**
    ```bash
    # Get the third-level domain from deployment
    THIRD_LEVEL=$(kubectl get deployment "$APP_NAME" -n "$NAMESPACE" \
@@ -104,35 +122,38 @@ chmod +x /tmp/opencode-deploy-v2.sh
        | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['thirdLevelDomain'])")
    
    # Get user's Olares domain from namespace or config
-   DOMAIN="onetest02.olares.com"  # Extract from environment
+   DOMAIN="{username}.olares.com"  # Extract from environment
    
    EXTERNAL_URL="https://${THIRD_LEVEL}.${DOMAIN}"
    ```
 
-6. **Report to User**
+7. **Report to User**
    ```
    ✅ Deployment successful!
    
    Your application is now live:
-   🌐 External URL: https://xxxxx-5000.onetest02.olares.com
+   🌐 External URL: https://{app-id}-3000.{username}.olares.com/app-name/
    
-   Internal URL (cluster only):
-   http://app-name-svc.namespace.svc.cluster.local:5000
+   Alternative access:
+   • By port: https://{app-id}-3000.{username}.olares.com/5000/
+   • Internal: http://app-name-svc.namespace.svc.cluster.local:5000
    
-   View logs: /tmp/opencode-manage.sh logs app-name
-   Manage: /tmp/opencode-manage.sh info app-name
+   Manage your app:
+   • View logs: olares-manage logs app-name
+   • Check status: olares-manage info app-name
+   • List all apps: olares-urls
    ```
 
 ### External Access Configuration
 
 **Olares URL Format:**
 ```
-https://{appid}-{port}.{username}.olares.com
+https://{appid}-{port}.{username}.olares.com/{path}
 
 Example:
-https://dd176ae5-5000.onetest02.olares.com
-         ↑          ↑      ↑
-      app id     port   username
+https://{app-id}-3000.{username}.olares.com/flask-app/
+         ↑          ↑      ↑            ↑
+      app id     port   username    app path
 ```
 
 **Required Annotations** (automatically added by script):
@@ -148,61 +169,61 @@ annotations:
 
 ### Management Commands
 
-**Location:** `/tmp/opencode-manage.sh`
+**Location:** `/root/.local/bin/olares-manage`
 
 ```bash
 # List all deployed apps
-/tmp/opencode-manage.sh list
+olares-manage list
 
 # Show app details and URL
-/tmp/opencode-manage.sh info <app-name>
+olares-manage info <app-name>
 
 # View logs
-/tmp/opencode-manage.sh logs <app-name>
-/tmp/opencode-manage.sh logs <app-name> -f  # Follow
+olares-manage logs <app-name>
+olares-manage logs <app-name> -f  # Follow
 
 # Test connectivity
-/tmp/opencode-manage.sh test <app-name>
+olares-manage test <app-name>
 
 # Delete app
-/tmp/opencode-manage.sh delete <app-name>
+olares-manage delete <app-name>
 ```
 
 ### Display All External URLs
 
-**Location:** `/tmp/opencode-urls.sh`
+**Location:** `/root/.local/bin/olares-urls`
 
 ```bash
 # Show all deployed apps with external URLs
-/tmp/opencode-urls.sh
+olares-urls
 ```
 
-Output:
+**Output:**
 ```
 ═══════════════════════════════════════════════
-  OpenCode 部署的应用 - 外部访问地址
+  OpenCode Deployed Applications
 ═══════════════════════════════════════════════
 
 ▶ flask-app
-  状态: ✅ Running (1/1)
-  端口: 5000
-  外部访问: https://dd176ae5-5000.onetest02.olares.com
-  集群内部: http://flask-app-svc.namespace.svc.cluster.local:5000
+  Status: ✅ Running (1/1)
+  Port: 5000
+  External: https://{app-id}-3000.{username}.olares.com/flask-app/
+  Internal: http://flask-app-svc.namespace.svc.cluster.local:5000
 
 ▶ express-api
-  状态: ✅ Running (1/1)
-  端口: 3000
-  外部访问: https://c113fc1b-3000.onetest02.olares.com
-  集群内部: http://express-api-svc.namespace.svc.cluster.local:3000
+  Status: ✅ Running (1/1)
+  Port: 3000
+  External: https://{app-id}-3000.{username}.olares.com/express-api/
+  Internal: http://express-api-svc.namespace.svc.cluster.local:3000
 ```
 
 ### Network Architecture
 
-**New Architecture (Unified Entry + Nginx Reverse Proxy):**
+**Current Architecture (Unified Entry + Nginx Reverse Proxy):**
 ```
 User Browser
     ↓ HTTPS
-https://b0c54349-3000.onetest02.olares.com/{app-name}/
+https://{app-id}-3000.{username}.olares.com/{app-name}/
     ↓ DNS Resolution
 Olares Ingress Controller (TLS termination)
     ↓ HTTP
@@ -210,10 +231,10 @@ OpenCode Container (port 3000 - unified entry)
     ↓
 Nginx Reverse Proxy (listening on 3000)
     ↓ Path-based routing
+    ├─ / → localhost:4096 (OpenCode Server mode)
     ├─ /express-demo/ → express-demo-svc:3000
     ├─ /flask-app/    → flask-app-svc:5000
-    ├─ /test-app/     → test-app-svc:8000
-    └─ /opencode/     → localhost:4096 (OpenCode Server mode)
+    └─ /test-app/     → test-app-svc:8000
     ↓
 Service: app-name-svc (ClusterIP)
     ↓ TCP
@@ -223,25 +244,10 @@ Application (0.0.0.0:port)
 ```
 
 **Key Points:**
-- **Unified Entry**: All external requests come through port 3000 (OpenCode default)
+- **Unified Entry**: All external requests come through port 3000 (OpenCode container)
 - **Path Routing**: Different URL paths map to different services
 - **Automatic Configuration**: Nginx configs auto-generated for each deployment
-- **Fixed OpenCode Mapping**: Port 4096 always mapped for OpenCode Server mode
-
-**Legacy Architecture (Direct Service Access - Deprecated):**
-```
-User Browser
-    ↓ HTTPS
-https://xxxxx-5000.onetest02.olares.com
-    ↓ DNS Resolution
-Olares Ingress Controller
-    ↓ HTTP (internal)
-Service: app-name-svc (ClusterIP:5000)
-    ↓ TCP
-Pod: app-name-xxx (10.233.x.x:5000)
-    ↓
-Application (0.0.0.0:5000)
-```
+- **Fixed OpenCode Mapping**: Root path (/) always mapped to localhost:4096 for OpenCode Server
 
 ### Nginx Reverse Proxy Configuration
 
@@ -265,40 +271,40 @@ python3 /root/.local/bin/olares-nginx-config
 
 **Output:**
 ```
-Olares Nginx 配置生成器
+Olares Nginx Configuration Generator
 ============================================================
 
-1. 扫描已部署的应用...
-  找到 3 个应用:
-    - express-demo (端口 3000)
-    - flask-app (端口 5000)
-    - test-app (端口 8000)
+1. Scanning deployed applications...
+   Found 3 applications:
+     - express-demo (port 3000)
+     - flask-app (port 5000)
+     - test-app (port 8000)
 
-2. 生成 Nginx 配置...
-✓ 生成配置: /etc/nginx/conf.d/dev/express-demo.conf
-✓ 生成配置: /etc/nginx/conf.d/dev/flask-app.conf
-✓ 生成配置: /etc/nginx/conf.d/dev/test-app.conf
-✓ 生成固定配置: /etc/nginx/conf.d/dev/opencode-server.conf (port 4096)
+2. Generating Nginx configurations...
+✓ Generated config: /etc/nginx/conf.d/dev/express-demo.conf
+✓ Generated config: /etc/nginx/conf.d/dev/flask-app.conf
+✓ Generated config: /etc/nginx/conf.d/dev/test-app.conf
+✓ Generated fixed config: /etc/nginx/conf.d/dev/opencode-server.conf (port 4096)
 
-3. 应用配置...
-✓ Nginx 配置测试通过
-✓ Nginx 重载成功
+3. Applying configuration...
+✓ Nginx configuration test passed
+✓ Nginx reloaded successfully
 
-✅ 配置完成！
+✅ Configuration complete!
 ```
 
 #### External Access URLs
 
 After Nginx configuration, applications are accessible via:
 
-**Pattern 1: Application Name Path**
+**Pattern 1: Application Name Path (Recommended)**
 ```
 https://{hash}-3000.{domain}/{app-name}/
 
 Examples:
-https://b0c54349-3000.onetest02.olares.com/express-demo/
-https://b0c54349-3000.onetest02.olares.com/flask-app/
-https://b0c54349-3000.onetest02.olares.com/test-app/
+https://{app-id}-3000.{username}.olares.com/express-demo/
+https://{app-id}-3000.{username}.olares.com/flask-app/
+https://{app-id}-3000.{username}.olares.com/test-app/
 ```
 
 **Pattern 2: Port Number Path**
@@ -306,17 +312,17 @@ https://b0c54349-3000.onetest02.olares.com/test-app/
 https://{hash}-3000.{domain}/{port}/
 
 Examples:
-https://b0c54349-3000.onetest02.olares.com/3000/  → express-demo
-https://b0c54349-3000.onetest02.olares.com/5000/  → flask-app
-https://b0c54349-3000.onetest02.olares.com/8000/  → test-app
+https://{app-id}-3000.{username}.olares.com/3000/  → express-demo
+https://{app-id}-3000.{username}.olares.com/5000/  → flask-app
+https://{app-id}-3000.{username}.olares.com/8000/  → test-app
 ```
 
 **Fixed: OpenCode Server Mode**
 ```
-https://{hash}-3000.{domain}/opencode/  → localhost:4096
+https://{hash}-3000.{domain}/  → localhost:4096
 
 Example:
-https://b0c54349-3000.onetest02.olares.com/opencode/
+https://{app-id}-3000.{username}.olares.com/
 ```
 
 #### Nginx Configuration Details
@@ -336,7 +342,7 @@ location /app-name/ {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     
-    # WebSocket support (critical for code-server, etc.)
+    # WebSocket support (critical for real-time apps)
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $http_connection;
     
@@ -362,8 +368,9 @@ location /port/ {
 # /etc/nginx/conf.d/dev/opencode-server.conf
 
 # OpenCode Server mode (always on port 4096)
-location /opencode/ {
-    proxy_pass http://localhost:4096/;
+# Fallback: All other paths go to OpenCode Server (must be last)
+location / {
+    proxy_pass http://localhost:4096;
     proxy_http_version 1.1;
     
     proxy_set_header Host $host;
@@ -375,7 +382,7 @@ location /opencode/ {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $http_connection;
     
-    # Long timeout for persistent connections
+    # Long timeout for persistent connections (1 hour)
     proxy_connect_timeout 60s;
     proxy_send_timeout 3600s;
     proxy_read_timeout 3600s;
@@ -390,26 +397,26 @@ location /opencode/ {
 **Standard Process:**
 ```bash
 # Step 1: Deploy application
-/root/.local/bin/olares-deploy my-app python:3.11-slim 5000 "python app.py"
+olares-deploy my-app python:3.11-slim 5000 "python app.py"
 
 # Step 2: Update Nginx reverse proxy (MANDATORY)
 python3 /root/.local/bin/olares-nginx-config
 
 # Step 3: Access application
-# https://b0c54349-3000.onetest02.olares.com/my-app/
+# https://{app-id}-3000.{username}.olares.com/my-app/
 ```
 
 **Automated Integration:**
 
-The deployment script at `/root/.local/bin/olares-deploy` can be modified to automatically trigger Nginx configuration update:
+The deployment script at `/root/.local/bin/olares-deploy` can automatically trigger Nginx configuration update:
 
 ```bash
 # Add at the end of olares-deploy script
 if [ -f /root/.local/bin/olares-nginx-config ]; then
     echo ""
-    log_step "更新 Nginx 反向代理配置..."
+    echo "Updating Nginx reverse proxy configuration..."
     python3 /root/.local/bin/olares-nginx-config > /dev/null 2>&1 || true
-    echo "✓ Nginx 配置已更新"
+    echo "✓ Nginx configuration updated"
 fi
 ```
 
@@ -482,7 +489,7 @@ curl http://localhost:3000/health
 # Expected: healthy
 
 # External access
-https://b0c54349-3000.onetest02.olares.com/health
+https://{app-id}-3000.{username}.olares.com/health
 ```
 
 ### Deployment Isolation
@@ -516,13 +523,13 @@ Each deployed app gets:
 | `Forbidden: cannot create deployments` | No RBAC | Request admin to apply RBAC config |
 | `ImagePullBackOff` | Image not found | Check image name and registry |
 | `CrashLoopBackOff` | App crashes on start | Check logs for errors |
-| `admission webhook denied` | Missing annotations | Use v2 script with proper annotations |
+| `admission webhook denied` | Missing annotations | Use deployment script with proper annotations |
 
-### Example: Complete Automated Flow (UPDATED)
+### Example: Complete Automated Flow
 
 **User says:** "I built a Flask todo app, deploy it"
 
-**AI Response (Updated with Nginx Reverse Proxy):**
+**AI Response:**
 ```
 I'll deploy your Flask app to Olares right away!
 
@@ -533,20 +540,20 @@ Detecting configuration...
 ✓ App name: flask-todo-app
 
 Deploying to Olares...
-[Executing: /root/.local/bin/olares-deploy flask-todo-app python:3.11-slim 5000 "pip install flask && python app.py"]
+[Executing: olares-deploy flask-todo-app python:3.11-slim 5000 "pip install flask && python app.py"]
 
 ✅ Deployment successful!
 
 Updating Nginx reverse proxy...
 [Executing: python3 /root/.local/bin/olares-nginx-config]
-✓ Nginx 配置已更新
-✓ 为 flask-todo-app 生成反向代理配置
+✓ Nginx configuration updated
+✓ Generated reverse proxy config for flask-todo-app
 
 Your Flask todo app is now live at:
-🌐 https://b0c54349-3000.onetest02.olares.com/flask-todo-app/
+🌐 https://{app-id}-3000.{username}.olares.com/flask-todo-app/
 
 Alternative access methods:
-• By port: https://b0c54349-3000.onetest02.olares.com/5000/
+• By port: https://{app-id}-3000.{username}.olares.com/5000/
 • Internal: http://flask-todo-app-svc.namespace.svc.cluster.local:5000
 
 The app is running in an isolated Pod with:
@@ -557,46 +564,30 @@ The app is running in an isolated Pod with:
 Access through unified entry point (port 3000) with path-based routing.
 
 You can view logs with:
-/root/.local/bin/olares-manage logs flask-todo-app
+olares-manage logs flask-todo-app
 
 Or manage it via:
-/root/.local/bin/olares-manage info flask-todo-app
+olares-manage info flask-todo-app
 ```
-
-**Key Changes from Legacy Flow:**
-1. ✅ Uses unified entry point (port 3000) instead of individual ports
-2. ✅ Automatically updates Nginx reverse proxy after deployment
-3. ✅ Provides path-based URL: `/{app-name}/` instead of separate domain
-4. ✅ Includes fixed OpenCode Server mapping on port 4096
-
-**Legacy vs New:**
-| Aspect | Legacy | New (Current) |
-|--------|--------|---------------|
-| Access URL | `https://{hash}-5000.domain` | `https://{hash}-3000.domain/flask-todo-app/` |
-| Entry Point | Multiple ports (3000, 5000, 8000...) | Single port (3000) |
-| Routing | Direct service access | Nginx reverse proxy (path-based) |
-| Configuration | Manual for each port | Automatic Nginx config generation |
-| OpenCode Server | Not configured | Fixed mapping at `/opencode/` → port 4096 |
 
 ---
 
 ## 📦 MARKET PACKAGE DEPLOYMENT (For Publishing)
 
-For apps intended for Olares Market or formal distribution, use the traditional Helm chart method below.
+For apps intended for Olares Market or formal distribution, use the Helm chart packaging method.
 
----
-
-## Application Package Structure
+### Application Package Structure
 
 ```
 myapp/
-├── Chart.yaml              # Helm chart metadata
+├── Chart.yaml              # Helm chart metadata (REQUIRED)
 ├── OlaresManifest.yaml     # Olares-specific configuration (REQUIRED)
+├── owners                  # GitHub usernames of maintainers (REQUIRED for Market)
 ├── templates/
 │   ├── deployment.yaml     # Kubernetes deployment
 │   └── service.yaml        # Kubernetes service (if needed)
 ├── values.yaml             # Default values (optional)
-└── README.md               # Documentation (optional)
+└── README.md               # Documentation (recommended)
 ```
 
 ---
@@ -614,6 +605,11 @@ keywords:
 home: https://github.com/user/myapp
 icon: https://example.com/icon.png
 ```
+
+**Important Notes:**
+- `name` must match directory name and `metadata.name` in OlaresManifest.yaml
+- `version` must match `metadata.version` in OlaresManifest.yaml
+- Use semantic versioning (SemVer): MAJOR.MINOR.PATCH
 
 ---
 
@@ -929,134 +925,365 @@ Olares automatically injects these variables (accessible via `.Values.*`):
 
 ---
 
-## Development Workflow
+## 🚀 GITHUB SUBMISSION (Olares Market Publishing)
 
-### Method A: Quick Deploy (Existing Docker Image)
+To publish your application to the official Olares Market, you must submit it through GitHub.
 
-If you already have a containerized application:
+### Prerequisites
 
-1. **Create chart structure:**
-   ```bash
-   mkdir -p myapp/templates
-   ```
+Before submission:
+1. ✅ Application tested thoroughly on your Olares
+2. ✅ Complete Helm chart created (Chart.yaml + OlaresManifest.yaml + templates)
+3. ✅ GitHub account with username
+4. ✅ Application assets prepared (icon, screenshots, etc.)
+5. ✅ Documentation written (README.md)
 
-2. **Create Chart.yaml, OlaresManifest.yaml, deployment.yaml, service.yaml**
-   (use templates above)
+### Submission Process Overview
 
-3. **Package:**
-   ```bash
-   # Using Helm
-   helm package myapp/
-   
-   # Or using olares-cli (if available)
-   olares-cli olares package myapp/
-   ```
-
-4. **Deploy via Studio UI:**
-   - Open Olares Desktop → DevBox → Studio
-   - Click "Upload" → Select .tgz file
-   - Click "Install"
-
-### Method B: Full Development (DevBox)
-
-For developing within Olares environment:
-
-1. **Create Dev Container:**
-   - DevBox → Containers → Create
-   - Select base image (e.g., `node:20`, `python:3.11`)
-   - Configure resources (CPU, Memory, Storage)
-
-2. **Develop in Container:**
-   - Access via code-server (VS Code in browser)
-   - Develop and test your application
-
-3. **Create Chart:**
-   - Follow Method A for packaging
-
-4. **Test Installation:**
-   - Studio → Upload → Install
-   - Check logs: DevBox → Containers → Logs
-
----
-
-## Deployment Process (Studio UI)
-
-Since Olares has no REST API, deployment must go through UI:
-
-### Manual Steps:
-
-1. **Access Studio:**
-   ```
-   https://desktop.<your-olares-domain>/studio
-   ```
-
-2. **Upload Package:**
-   - Click "Custom" tab
-   - Click "Upload" button
-   - Select your `.tgz` chart package
-
-3. **Configure (if options defined):**
-   - Fill any user-configurable options
-
-4. **Install:**
-   - Click "Install"
-   - Wait for deployment to complete
-
-5. **Verify:**
-   - Check app appears in Olares desktop
-   - Check container logs in DevBox if issues occur
-
-### Automation with Playwright:
-
-For automated deployment, use Playwright to interact with Studio UI:
-
-```typescript
-// Example: Automated deployment script
-async function deployToOlares(chartPath: string) {
-  const page = await browser.newPage();
-  await page.goto('https://desktop.your-olares.com/studio');
-  
-  // Navigate to Custom tab
-  await page.click('text=Custom');
-  
-  // Upload chart
-  const fileInput = await page.locator('input[type="file"]');
-  await fileInput.setInputFiles(chartPath);
-  
-  // Wait for upload and click Install
-  await page.click('button:has-text("Install")');
-  
-  // Wait for completion
-  await page.waitForSelector('text=Installed', { timeout: 60000 });
-}
+```
+1. Fork official repository
+   ↓
+2. Add your application chart
+   ↓
+3. Create Pull Request with proper format
+   ↓
+4. GitBot automatic validation
+   ↓
+5. Review and merge
+   ↓
+6. Application live on Olares Market
 ```
 
+### Step 1: Fork Official Repository
+
+**Repository:** https://github.com/beclab/apps
+
+```bash
+# Fork via GitHub UI, then clone your fork
+git clone https://github.com/YOUR_USERNAME/apps.git
+cd apps
+```
+
+### Step 2: Prepare Application Chart
+
+**Directory Structure:**
+```
+apps/
+└── myapp/                              # Your application folder
+    ├── Chart.yaml                      # REQUIRED
+    ├── OlaresManifest.yaml            # REQUIRED
+    ├── owners                          # REQUIRED (GitHub usernames)
+    ├── README.md                       # Recommended
+    ├── templates/
+    │   ├── deployment.yaml
+    │   └── service.yaml
+    └── values.yaml                     # Optional
+```
+
+**Create `owners` file:**
+```bash
+# Add your GitHub username (one per line)
+echo "your-github-username" > myapp/owners
+```
+
+**Example `owners` file:**
+```
+longzhi
+another-contributor
+```
+
+### Step 3: Prepare Application Assets
+
+**Asset Requirements:**
+
+| Asset Type | Format | Size Limit | Dimensions | Required |
+|-----------|--------|------------|------------|----------|
+| Icon | PNG/WEBP | ≤512 KB | 256x256 px | ✅ YES |
+| Screenshots | JPEG/PNG/WEBP | ≤8 MB each | 1440x900 px | ⚠️ Recommended (2-8) |
+| Featured Image | JPEG/PNG/WEBP | ≤8 MB | 1440x900 px | Optional |
+
+**Add assets to OlaresManifest.yaml:**
+```yaml
+metadata:
+  icon: https://example.com/icon.webp
+
+spec:
+  promoteImage:
+    - https://example.com/screenshot1.png
+    - https://example.com/screenshot2.png
+  featuredImage: https://example.com/featured.webp
+```
+
+### Step 4: Create Pull Request
+
+**PR Title Format (CRITICAL):**
+```
+[PR_TYPE][FolderName][version]Title Content
+
+Examples:
+[NEW][myapp][0.1.0]My awesome application
+[UPDATE][myapp][0.2.0]Fixed bugs and improved performance
+[SUSPEND][myapp][0.1.0]Temporarily suspend distribution
+[REMOVE][myapp][0.1.0]Remove application from market
+```
+
+**PR Types:**
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `NEW` | Submit new application | First-time submission |
+| `UPDATE` | Update existing application | Bug fixes, new features, version upgrade |
+| `SUSPEND` | Temporarily disable distribution | Need to pause downloads |
+| `REMOVE` | Permanently remove application | Complete removal from market |
+
+**PR Title Rules:**
+- ✅ Must contain exactly ONE PR type, folder name, and version
+- ✅ PR type must be one of: NEW, UPDATE, SUSPEND, REMOVE
+- ✅ Folder name must match your chart directory name
+- ✅ Version must match Chart.yaml and OlaresManifest.yaml
+- ❌ Do NOT modify PR title after GitBot labels it
+
+**Create Draft PR:**
+```bash
+# Commit your changes
+git add myapp/
+git commit -m "Add myapp application"
+git push origin main
+
+# Create Draft PR via GitHub UI:
+# 1. Go to https://github.com/beclab/apps
+# 2. Click "Pull Requests" → "New Pull Request"
+# 3. Select your fork and branch
+# 4. Click "Create Draft Pull Request"
+# 5. Fill in PR title following the format above
+```
+
+### Step 5: PR Validation and Review
+
+**GitBot Automatic Checks:**
+
+GitBot will automatically validate:
+- ✅ PR title format is correct
+- ✅ Only one PR exists for this folder
+- ✅ Submitter is listed in `owners` file
+- ✅ Chart.yaml and OlaresManifest.yaml versions match
+- ✅ All required files present
+- ✅ No `.suspend` or `.remove` files in NEW submissions
+
+**PR Status Labels:**
+
+| Label | Meaning | Action Required |
+|-------|---------|-----------------|
+| `PR type` | PR title is valid | Continue working |
+| `waiting to submit` | Issues found, needs modification | Fix issues and push new commits |
+| `waiting to merge` | All checks passed | Wait for auto-merge |
+| `merged` | PR merged successfully | Application will appear in Market |
+| `closed` | PR has irreparable issues | Create new PR after fixing |
+
+**During Draft Phase:**
+- ✅ You can continuously commit and push changes
+- ✅ GitBot will NOT check until you mark "Ready for review"
+- ✅ Take your time to perfect your submission
+
+**Ready for Review:**
+```
+1. Click "Ready for review" button
+2. GitBot starts automatic validation
+3. Check PR comments for any issues
+4. If issues found, push fixes
+5. GitBot will re-check on new commits
+```
+
+### Step 6: Update Existing Application
+
+**Version Requirements:**
+- ✅ New version MUST be greater than current version
+- ✅ Use semantic versioning: MAJOR.MINOR.PATCH
+- ✅ Update both Chart.yaml and OlaresManifest.yaml
+- ❌ No version rollback supported
+
+**Update PR Title Format:**
+```
+[UPDATE][myapp][0.2.0]Added new features and fixed bugs
+```
+
+**Update Workflow:**
+```bash
+# Sync your fork with upstream
+git remote add upstream https://github.com/beclab/apps.git
+git fetch upstream
+git rebase upstream/main
+
+# Update your application
+# - Modify files in myapp/
+# - Bump version in Chart.yaml and OlaresManifest.yaml
+# - Update README.md with changes
+
+git add myapp/
+git commit -m "Update myapp to v0.2.0"
+git push origin main
+
+# Create UPDATE PR with proper title format
+```
+
+### Step 7: Suspend Application
+
+To temporarily stop distribution:
+
+**PR Title:**
+```
+[SUSPEND][myapp][0.1.0]Temporarily suspend for maintenance
+```
+
+**Requirements:**
+- ✅ Version must MATCH current version in repository
+- ✅ Add `.suspend` file to chart root directory
+- ❌ Do NOT include `.remove` file
+
+**Create `.suspend` file:**
+```bash
+touch myapp/.suspend
+git add myapp/.suspend
+git commit -m "Suspend myapp"
+git push origin main
+```
+
+**After Suspension:**
+- Application stops appearing in Market
+- Users who already installed can continue using it
+- You can lift suspension with an UPDATE PR (remove `.suspend` file)
+
+### Step 8: Remove Application
+
+To permanently remove from Market:
+
+**PR Title:**
+```
+[REMOVE][myapp][0.1.0]Remove application permanently
+```
+
+**Requirements:**
+- ✅ Empty ALL files in application directory
+- ✅ Add `.remove` file to chart root directory
+- ⚠️ **IRREVERSIBLE**: Cannot reuse the same name/folder
+
+**Remove Workflow:**
+```bash
+# Empty all files except .remove
+rm -rf myapp/*
+touch myapp/.remove
+
+git add myapp/
+git commit -m "Remove myapp permanently"
+git push origin main
+
+# Create REMOVE PR
+```
+
+**After Removal:**
+- Application completely removed from Market
+- Users who already installed can continue using it
+- You CANNOT reuse the folder name or application name
+
+### Troubleshooting Submission
+
+**Issue: GitBot closed my PR**
+- ✅ Create a NEW PR (do NOT reopen)
+- ✅ Fix issues mentioned in PR comments
+- ✅ Ensure PR title format is correct
+
+**Issue: "Not an owner" error**
+- ✅ Check `owners` file includes your GitHub username
+- ✅ Username must be exact match (case-sensitive)
+
+**Issue: "Version conflict" error**
+- ✅ Ensure Chart.yaml version matches OlaresManifest.yaml
+- ✅ For UPDATE, version must be greater than current
+- ✅ Use semantic versioning format
+
+**Issue: "Invalid PR title" error**
+- ✅ Check PR title format: `[TYPE][folder][version]Title`
+- ✅ PR type must be: NEW, UPDATE, SUSPEND, or REMOVE
+- ✅ Folder name must match your chart directory
+- ✅ Do NOT include extra brackets or special characters
+
+### Collaboration and Ownership
+
+**Add Multiple Owners:**
+```
+# owners file
+alice
+bob
+charlie
+```
+
+**Two Collaboration Methods:**
+
+**Method 1: Multiple Owners (Recommended)**
+- Add all collaborators to `owners` file
+- Each can fork and submit PRs independently
+- All share ownership and maintenance responsibility
+
+**Method 2: Repository Collaborators**
+- Add others as collaborators to your fork
+- They can push to your fork's branch
+- You create PR as representative
+- Only main submitter needs to be in `owners` file
+
 ---
 
-## Publishing to Market (Optional)
+## Development Workflow Summary
 
-To publish your app to the official Olares Market:
+### Quick Development Test (DevBox)
 
-1. **Fork repository:** https://github.com/beclab/apps
+```bash
+# 1. Develop application locally or in OpenCode
+# 2. Deploy for testing
+olares-deploy myapp python:3.11-slim 5000 "python app.py"
 
-2. **Add your chart:**
-   ```
-   apps/
-   └── myapp/
-       ├── Chart.yaml
-       ├── OlaresManifest.yaml
-       └── templates/
-   ```
+# 3. Update Nginx
+python3 /root/.local/bin/olares-nginx-config
 
-3. **Submit PR** with:
-   - Clear description
-   - Screenshots (if UI app)
-   - Testing evidence
+# 4. Test at: https://xxx-3000.domain.com/myapp/
+# 5. View logs: olares-manage logs myapp
+```
 
-4. **Review Process:**
-   - Automated validation
-   - Manual review by Olares team
-   - Merge and publish to Market
+### Package for Studio Upload
+
+```bash
+# 1. Create chart structure
+mkdir -p myapp/templates
+
+# 2. Create Chart.yaml, OlaresManifest.yaml, deployment.yaml, service.yaml
+
+# 3. Package
+helm package myapp/
+
+# 4. Upload via Studio UI → Custom → Upload → myapp-0.1.0.tgz
+```
+
+### Publish to Market
+
+```bash
+# 1. Fork https://github.com/beclab/apps
+git clone https://github.com/YOUR_USERNAME/apps.git
+
+# 2. Add your chart
+cp -r myapp/ apps/
+
+# 3. Create owners file
+echo "your-github-username" > apps/myapp/owners
+
+# 4. Commit and push
+git add apps/myapp/
+git commit -m "Add myapp application"
+git push origin main
+
+# 5. Create PR with title: [NEW][myapp][0.1.0]My Application
+
+# 6. Mark "Ready for review" when ready
+
+# 7. Wait for GitBot validation and auto-merge
+```
 
 ---
 
@@ -1149,18 +1376,39 @@ helm lint myapp/
 # Template render (debug)
 helm template myapp myapp/ --debug
 
-# Using olares-cli (if installed)
-olares-cli olares package myapp/
-olares-cli olares lint myapp/
+# DevBox deployment
+olares-deploy myapp python:3.11-slim 5000 "python app.py"
+
+# Update Nginx reverse proxy
+python3 /root/.local/bin/olares-nginx-config
+
+# Manage deployed apps
+olares-manage list
+olares-manage info myapp
+olares-manage logs myapp
+olares-manage delete myapp
+
+# Display all URLs
+olares-urls
 ```
 
 ---
 
-## Examples Repository
+## Official Resources
 
-Reference implementations: https://github.com/beclab/apps
+- **Market Repository**: https://github.com/beclab/apps
+- **Documentation**: https://docs.olares.com/developer/
+- **Chart Structure**: https://docs.olares.com/developer/develop/package/chart.html
+- **OlaresManifest**: https://docs.olares.com/developer/develop/package/manifest.html
+- **Submission Guide**: https://docs.olares.com/developer/develop/submit/
 
-Recommended apps to study:
+---
+
+## Example Applications
+
+Study these reference implementations:
 - `affine` - Complex app with multiple services
 - `wordpress` - Database-backed web app
 - `n8n` - Automation platform with Redis
+
+Browse all: https://github.com/beclab/apps
