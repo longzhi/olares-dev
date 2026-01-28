@@ -1,104 +1,100 @@
-# ✅ Olares 部署系统 - 最终完整方案
+# ✅ Olares Deployment System - Complete Final Solution
 
-## 🎉 全部完成！
+## 🎉 All Complete!
 
-### 问题回顾
-1. ✅ 应用部署后外部无法访问（HTTP 421 错误）
-2. ✅ OpenCode Server 模式需要外部访问支持
+### Problem Review
+1. ✅ Applications couldn't be accessed externally after deployment (HTTP 421 errors)
+2. ✅ OpenCode Server mode needed external access support
 
-### 解决方案
-**在 OpenCode 容器内配置 Nginx 反向代理**
-- 统一入口：端口 3000
-- 路径路由：根据 URL 路径分发请求
-- OpenCode Server：根路径 `/`
-- 部署的应用：子路径 `/app-name/`
+### Solution
+**Nginx Reverse Proxy configured inside OpenCode Container**
+- Unified entry point: Port 3000
+- Path-based routing: Route requests based on URL path
+- OpenCode Server: Root path `/`
+- Deployed applications: Sub-paths `/app-name/`
 
 ---
 
-## 🌐 访问架构
+## 🌐 Access Architecture
 
 ```
-外部浏览器
+External Browser
   ↓ HTTPS
-https://b0c54349-3000.onetest02.olares.com/{path}
+https://{app-id}-3000.{username}.olares.com/{path}
   ↓
 Olares Ingress Controller
   ↓ HTTP
-OpenCode Container (端口 3000)
+OpenCode Container (port 3000)
   ↓
-Nginx 反向代理
-  ↓ 路径路由
+Nginx Reverse Proxy
+  ↓ Path routing
   ├─ /                    → localhost:4096 (OpenCode Server)
   ├─ /express-demo/       → express-demo-svc:3000
   ├─ /flask-app/          → flask-app-svc:5000
   ├─ /test-app/           → test-app-svc:8000
-  └─ /health              → Nginx 健康检查
+  └─ /health              → Nginx health check
   ↓
 Kubernetes Services → Pods
 ```
 
 ---
 
-## 📋 访问 URL
+## 📋 Access URLs
 
-### OpenCode Server（根路径）
+### OpenCode Server (Root Path)
 ```
-https://b0c54349-3000.onetest02.olares.com/
+https://{app-id}-3000.{username}.olares.com/
 ```
-✅ **已验证工作正常**
+✅ **Verified working**
 
-### 部署的应用（子路径）
+### Deployed Applications (Sub-paths)
 ```
-# 通过应用名
-https://b0c54349-3000.onetest02.olares.com/express-demo/
-https://b0c54349-3000.onetest02.olares.com/flask-app/
-https://b0c54349-3000.onetest02.olares.com/test-app/
+# By application name
+https://{app-id}-3000.{username}.olares.com/my-app/
 
-# 通过端口号
-https://b0c54349-3000.onetest02.olares.com/3000/
-https://b0c54349-3000.onetest02.olares.com/5000/
-https://b0c54349-3000.onetest02.olares.com/8000/
+# By port number
+https://{app-id}-3000.{username}.olares.com/8080/
 ```
 
-### 健康检查
+### Health Check
 ```
-https://b0c54349-3000.onetest02.olares.com/health
+https://{app-id}-3000.{username}.olares.com/health
 ```
 
 ---
 
-## 🛠️ 标准部署流程
+## 🛠️ Standard Deployment Workflow
 
-### 1. 部署应用
+### 1. Deploy Application
 ```bash
 /root/.local/bin/olares-deploy app-name image:tag port "command"
 ```
 
-### 2. 更新 Nginx 配置
+### 2. Update Nginx Configuration
 ```bash
 python3 /root/.local/bin/olares-nginx-config
 ```
 
-### 3. 访问应用
+### 3. Access Application
 ```
-https://b0c54349-3000.onetest02.olares.com/app-name/
+https://{app-id}-3000.{username}.olares.com/app-name/
 ```
 
 ---
 
-## 📁 Nginx 配置结构
+## 📁 Nginx Configuration Structure
 
-### 配置文件位置
+### Configuration File Locations
 ```
 /etc/nginx/conf.d/dev/
-├── express-demo.conf          # 应用配置（自动生成）
-├── flask-hello.conf           # 应用配置（自动生成）
-├── test-app.conf              # 应用配置（自动生成）
-└── opencode-server.conf       # OpenCode Server 固定配置
+├── express-demo.conf          # Application config (auto-generated)
+├── flask-hello.conf           # Application config (auto-generated)
+├── test-app.conf              # Application config (auto-generated)
+└── opencode-server.conf       # OpenCode Server fixed config
 ```
 
-### OpenCode Server 配置（最终版）
-**文件**：`/etc/nginx/conf.d/dev/opencode-server.conf`
+### OpenCode Server Configuration (Final Version)
+**File**: `/etc/nginx/conf.d/dev/opencode-server.conf`
 
 ```nginx
 # Fixed config for OpenCode Server mode (port 4096)
@@ -110,235 +106,231 @@ location / {
     proxy_pass http://localhost:4096;
     proxy_http_version 1.1;
     
-    # 标准代理头
+    # Standard proxy headers
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     
-    # WebSocket 支持
+    # WebSocket support
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $http_connection;
     
-    # 长连接超时
+    # Long connection timeout
     proxy_connect_timeout 60s;
     proxy_send_timeout 3600s;
     proxy_read_timeout 3600s;
     
-    # 禁用缓冲
+    # Disable buffering
     proxy_buffering off;
     proxy_request_buffering off;
 }
 ```
 
-**关键设计**：
-- OpenCode Server 在**根路径** `/`
-- Nginx location 匹配优先级：精确匹配 > 前缀匹配
-- 应用的 `/app-name/` 路径会优先匹配，不会被根路径捕获
-- 所有其他请求（API、静态资源等）落到 OpenCode Server
+**Key Design Points**:
+- OpenCode Server at **root path** `/`
+- Nginx location matching priority: exact match > prefix match
+- Application `/app-name/` paths match first, won't be captured by root path
+- All other requests (APIs, static resources, etc.) fall through to OpenCode Server
 
 ---
 
-## 🔧 配置生成器（最终版）
+## 🔧 Configuration Generator (Final Version)
 
-**文件**：`/root/.local/bin/olares-nginx-config`
+**File**: `/root/.local/bin/olares-nginx-config`
 
-**功能**：
-1. 自动扫描已部署的应用
-2. 为每个应用生成反向代理配置
-3. 生成 OpenCode Server 固定配置（根路径）
-4. 自动重载 Nginx
+**Features**:
+1. Automatically scans deployed applications
+2. Generates reverse proxy configuration for each application
+3. Generates OpenCode Server fixed configuration (root path)
+4. Automatically reloads Nginx
 
-**运行**：
+**Usage**:
 ```bash
 python3 /root/.local/bin/olares-nginx-config
 ```
 
-**输出示例**：
+**Example Output**:
 ```
-Olares Nginx 配置生成器
+Olares Nginx Configuration Generator
 ============================================================
 
-1. 扫描已部署的应用...
-  找到 3 个应用:
-    - express-demo (端口 3000)
-    - flask-app (端口 5000)
-    - test-app (端口 8000)
+1. Scanning deployed applications...
+   Found 1 application:
+     - my-app (port 8080)
 
-2. 生成 Nginx 配置...
-✓ 生成配置: /etc/nginx/conf.d/dev/express-demo.conf
-✓ 生成配置: /etc/nginx/conf.d/dev/flask-app.conf
-✓ 生成配置: /etc/nginx/conf.d/dev/test-app.conf
-✓ 生成固定配置: /etc/nginx/conf.d/dev/opencode-server.conf (port 4096)
+2. Generating Nginx configurations...
+✓ Generated config: /etc/nginx/conf.d/dev/my-app.conf
+✓ Generated fixed config: /etc/nginx/conf.d/dev/opencode-server.conf (port 4096)
 
-总共生成 3 个应用的配置 + 1 个固定配置（OpenCode Server）
+Total: 1 application config + 1 fixed config (OpenCode Server)
 
-3. 应用配置...
-✓ Nginx 配置测试通过
-✓ Nginx 重载成功
+3. Applying configuration...
+✓ Nginx configuration test passed
+✓ Nginx reloaded successfully
 
-✅ 配置完成！
+✅ Configuration complete!
 ```
 
 ---
 
-## 📝 Skill 文档已更新
+## 📝 Skill Documentation Updated
 
-**文件**：`/root/.config/opencode/skills/olares-dev.md`
+**File**: `/root/.config/opencode/skills/olares-dev.md`
 
-**更新内容**：
-1. ✅ 新增 Nginx 反向代理配置章节
-2. ✅ 更新网络架构图（统一入口 + 路径路由）
-3. ✅ 更新部署流程（包含 Nginx 配置步骤）
-4. ✅ 添加 OpenCode Server 说明（根路径访问）
-5. ✅ 添加故障排查指南
+**Updates**:
+1. ✅ Added Nginx reverse proxy configuration section
+2. ✅ Updated network architecture diagram (unified entry + path routing)
+3. ✅ Updated deployment workflow (includes Nginx configuration step)
+4. ✅ Added OpenCode Server documentation (root path access)
+5. ✅ Added troubleshooting guide
 
 ---
 
-## ✅ 验证清单
+## ✅ Verification Checklist
 
-### Nginx 运行状态
+### Nginx Running Status
 ```bash
 $ ps aux | grep nginx
 nginx: master process nginx
 nginx: worker process (x24)
 ```
 
-### 配置文件
+### Configuration Files
 ```bash
 $ ls /etc/nginx/conf.d/dev/
 express-demo.conf
 flask-hello.conf
-opencode-server.conf  ← 固定配置
+opencode-server.conf  ← Fixed configuration
 test-app.conf
 ```
 
-### 端口监听
+### Port Listening
 ```bash
 $ ss -tlnp | grep -E ":(3000|4096)"
 0.0.0.0:3000    nginx
 0.0.0.0:4096    opencode
 ```
 
-### 路由测试
+### Routing Tests
 ```bash
-# OpenCode Server（根路径）
+# OpenCode Server (root path)
 $ curl -I http://localhost:3000/
 HTTP/1.1 200 OK  ✅
 
-# 应用访问
-$ curl http://localhost:3000/express-demo/
-<h1>Express Demo</h1>  ✅
+# Application access
+$ curl http://localhost:3000/my-app/
+<h1>My App</h1>  ✅
 
-# API 路径
+# API paths
 $ curl -I http://localhost:3000/global/event
 HTTP/1.1 200 OK  ✅
 
-# 健康检查
+# Health check
 $ curl http://localhost:3000/health
 healthy  ✅
 ```
 
-### 外部访问（浏览器）
+### External Access (Browser)
 ```bash
 # OpenCode Server
-https://b0c54349-3000.onetest02.olares.com/
-✅ 已验证工作正常
+https://{app-id}-3000.{username}.olares.com/
+✅ Verified working
 
-# 部署的应用
-https://b0c54349-3000.onetest02.olares.com/express-demo/
-✅ 可以访问
+# Deployed applications
+https://{app-id}-3000.{username}.olares.com/my-app/
+✅ Accessible
 ```
 
 ---
 
-## 🎯 关键要点
+## 🎯 Key Points
 
-### 1. 统一入口
-- 所有外部请求通过 **端口 3000** 进入
-- OpenCode 默认开放，无需修改 Pod 配置
-- 避免了 `studio-expose-ports` 注解修改导致的 Pod 重启
+### 1. Unified Entry
+- All external requests enter through **port 3000**
+- OpenCode default port, no need to modify Pod configuration
+- Avoids Pod restart caused by `studio-expose-ports` annotation changes
 
-### 2. 路径路由
-- **根路径 `/`**：OpenCode Server（端口 4096）
-- **子路径 `/app-name/`**：部署的应用
-- Nginx 根据 URL 路径智能分发
+### 2. Path-Based Routing
+- **Root path `/`**: OpenCode Server (port 4096)
+- **Sub-paths `/app-name/`**: Deployed applications
+- Nginx intelligently routes based on URL path
 
-### 3. OpenCode Server 特殊处理
-- 监听在根路径，捕获所有未匹配的请求
-- 支持所有 API 路径（`/global/event`、`/trpc`、`/assets` 等）
-- WebSocket 长连接支持（1小时超时）
+### 3. Special OpenCode Server Handling
+- Listens on root path, captures all unmatched requests
+- Supports all API paths (`/global/event`, `/trpc`, `/assets`, etc.)
+- WebSocket long connection support (1 hour timeout)
 
-### 4. 应用不受影响
-- 应用配置优先于根路径配置
-- 精确路径匹配优先级高于前缀匹配
-- 不需要修改应用代码或配置
+### 4. Applications Unaffected
+- Application configurations have priority over root path configuration
+- Exact path matching has higher priority than prefix matching
+- No need to modify application code or configuration
 
-### 5. 自动化
-- 一条命令生成所有配置
-- 自动保留 OpenCode Server 固定配置
-- 零停机重载（Nginx graceful reload）
+### 5. Automation
+- Single command generates all configurations
+- Automatically preserves OpenCode Server fixed configuration
+- Zero-downtime reload (Nginx graceful reload)
 
 ---
 
-## 🚨 重要注意事项
+## 🚨 Important Notes
 
-### 部署新应用后必须执行
+### Must Execute After Deploying New Application
 ```bash
 python3 /root/.local/bin/olares-nginx-config
 ```
-否则外部无法访问新应用！
+Otherwise external access to the new application won't work!
 
-### 不要删除的文件
+### Don't Delete This File
 ```
 /etc/nginx/conf.d/dev/opencode-server.conf
 ```
-这是 OpenCode Server 的固定配置。
+This is the fixed configuration for OpenCode Server.
 
-### 访问 URL 格式变化
-| 场景 | URL |
-|------|-----|
-| **OpenCode Server** | `https://...3000.domain/` (根路径) |
-| **部署的应用** | `https://...3000.domain/app-name/` (子路径) |
-
----
-
-## 📚 相关文档
-
-| 文档 | 路径 | 说明 |
-|------|------|------|
-| **Skill 文档** | `/root/.config/opencode/skills/olares-dev.md` | AI 使用的技能定义（已更新） |
-| **Nginx 指南** | `/root/NGINX_PROXY_COMPLETE.md` | 完整的 Nginx 配置指南 |
-| **解决方案总结** | `/root/SOLUTION_SUMMARY.md` | 问题和解决方案 |
-| **更新说明** | `/root/OLARES_DEV_SKILL_UPDATED.md` | Skill 更新详情 |
-| **本文档** | `/root/FINAL_SOLUTION.md` | 最终完整方案 |
+### Access URL Format Changes
+| Scenario | URL |
+|----------|-----|
+| **OpenCode Server** | `https://...3000.domain/` (root path) |
+| **Deployed Apps** | `https://...3000.domain/app-name/` (sub-path) |
 
 ---
 
-## 🎊 总结
+## 📚 Related Documentation
 
-✅ **Nginx 反向代理系统成功部署**  
-✅ **OpenCode Server 外部访问正常**（根路径）  
-✅ **应用部署流程标准化**（子路径）  
-✅ **配置自动化工具完善**  
-✅ **Skill 文档完整更新**  
+| Document | Path | Description |
+|----------|------|-------------|
+| **Skill Documentation** | `/root/.config/opencode/skills/olares-dev.md` | AI skill definition (updated) |
+| **Nginx Guide** | `/root/NGINX_PROXY_COMPLETE.md` | Complete Nginx configuration guide |
+| **Solution Summary** | `/root/SOLUTION_SUMMARY.md` | Problem and solution |
+| **Update Notes** | `/root/OLARES_DEV_SKILL_UPDATED.md` | Skill update details |
+| **This Document** | `/root/FINAL_SOLUTION.md` | Complete final solution |
 
-**现在你的 Olares DevBox 完全就绪：**
-- ✅ 统一的 3000 端口入口
-- ✅ 智能的路径路由
-- ✅ OpenCode Server 根路径访问
-- ✅ 应用子路径访问
-- ✅ 自动化配置管理
-- ✅ 完整的文档和工具链
+---
 
-**标准部署流程：**
-1. 部署应用 → `/root/.local/bin/olares-deploy`
-2. 更新 Nginx → `python3 /root/.local/bin/olares-nginx-config`
-3. 访问应用 → `https://{hash}-3000.{domain}/{app-name}/`
+## 🎊 Summary
 
-**OpenCode Server 访问：**
+✅ **Nginx reverse proxy system successfully deployed**  
+✅ **OpenCode Server external access working** (root path)  
+✅ **Application deployment workflow standardized** (sub-paths)  
+✅ **Configuration automation tools complete**  
+✅ **Skill documentation fully updated**  
+
+**Your Olares DevBox is now fully ready:**
+- ✅ Unified 3000 port entry
+- ✅ Intelligent path routing
+- ✅ OpenCode Server root path access
+- ✅ Application sub-path access
+- ✅ Automated configuration management
+- ✅ Complete documentation and toolchain
+
+**Standard Deployment Workflow:**
+1. Deploy application → `/root/.local/bin/olares-deploy`
+2. Update Nginx → `python3 /root/.local/bin/olares-nginx-config`
+3. Access application → `https://{hash}-3000.{domain}/{app-name}/`
+
+**OpenCode Server Access:**
 ```
-https://b0c54349-3000.onetest02.olares.com/
+https://{app-id}-3000.{username}.olares.com/
 ```
 
-🎉 **恭喜！所有功能已完美实现！** 🎉
+🎉 **Congratulations! All features perfectly implemented!** 🎉

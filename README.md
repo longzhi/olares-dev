@@ -62,7 +62,7 @@ cp olares-dev.md ~/.config/opencode/skills/
 
 ```bash
 # 1. Deploy application
-olares-deploy my-app python:3.11-slim 5000 "python app.py"
+olares-deploy my-app python:3.11-slim 8080 "python app.py"
 
 # 2. Update Nginx config (REQUIRED)
 python3 ~/.local/bin/olares-nginx-config
@@ -119,7 +119,7 @@ Root path for OpenCode Server (port 4096).
 https://{hash}-3000.{domain}/my-app/
 
 # By port number
-https://{hash}-3000.{domain}/5000/
+https://{hash}-3000.{domain}/8080/
 
 # Health check
 https://{hash}-3000.{domain}/health
@@ -144,7 +144,7 @@ For rapid development and testing:
 
 ```bash
 # Just run deploy command
-olares-deploy my-app python:3.11-slim 5000 "python app.py"
+olares-deploy my-app python:3.11-slim 8080 "python app.py"
 python3 olares-nginx-config
 
 # App is live immediately!
@@ -157,7 +157,7 @@ python3 olares-nginx-config
 echo '<h1>Hello World</h1>' > index.html
 
 # Deploy
-olares-deploy hello-world python:3.11-slim 8000 "python -m http.server 8000"
+olares-deploy hello-world python:3.11-slim 8080 "python -m http.server 8080"
 
 # Update Nginx
 python3 olares-nginx-config

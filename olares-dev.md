@@ -65,16 +65,10 @@ cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
 /root/.local/bin/olares-deploy <app-name> <image> <port> [startup-command]
 ```
 
-**Examples:**
+**Example:**
 ```bash
-# Deploy Flask app
-olares-deploy flask-app python:3.11-slim 5000 "pip install flask && python app.py"
-
-# Deploy Express.js app
-olares-deploy express-demo node:20-slim 3000 "npm install && npm start"
-
-# Deploy FastAPI app
-olares-deploy api-server python:3.11-slim 8000 "pip install fastapi uvicorn && uvicorn main:app --host 0.0.0.0"
+# Deploy Python web app
+olares-deploy my-app python:3.11-slim 8080 "pip install flask && python app.py"
 ```
 
 ### Automatic Deployment Workflow
@@ -83,11 +77,11 @@ olares-deploy api-server python:3.11-slim 8000 "pip install fastapi uvicorn && u
 
 1. **Detect Application Type**
    ```python
-   frameworks = {
-       'flask': {'image': 'python:3.11-slim', 'port': 5000, 'detect': 'app.py with Flask'},
-       'fastapi': {'image': 'python:3.11-slim', 'port': 8000, 'detect': 'main.py with FastAPI'},
-       'express': {'image': 'node:20-slim', 'port': 3000, 'detect': 'package.json with express'},
-       'django': {'image': 'python:3.11-slim', 'port': 8000, 'detect': 'manage.py'}
+   # Example: Python web application
+   app_config = {
+       'image': 'python:3.11-slim',
+       'port': 8080,
+       'detect': 'app.py or main.py'
    }
    ```
 
@@ -99,10 +93,8 @@ olares-deploy api-server python:3.11-slim 8000 "pip install fastapi uvicorn && u
    ```
 
 3. **Build Startup Command**
-   - Flask: `pip install flask && python app.py`
-   - FastAPI: `pip install fastapi uvicorn && uvicorn main:app --host 0.0.0.0 --port 8000`
-   - Express: `npm install && npm start`
-   - Django: `pip install django && python manage.py runserver 0.0.0.0:8000`
+   - Example: `pip install flask && python app.py`
+   - Or: `pip install fastapi uvicorn && uvicorn main:app --host 0.0.0.0 --port 8080`
 
 4. **Execute Deployment**
    ```bash
@@ -135,8 +127,8 @@ olares-deploy api-server python:3.11-slim 8000 "pip install fastapi uvicorn && u
    🌐 External URL: https://{app-id}-3000.{username}.olares.com/app-name/
    
    Alternative access:
-   • By port: https://{app-id}-3000.{username}.olares.com/5000/
-   • Internal: http://app-name-svc.namespace.svc.cluster.local:5000
+   • By port: https://{app-id}-3000.{username}.olares.com/8080/
+   • Internal: http://app-name-svc.namespace.svc.cluster.local:8080
    
    Manage your app:
    • View logs: olares-manage logs app-name
@@ -151,7 +143,7 @@ olares-deploy api-server python:3.11-slim 8000 "pip install fastapi uvicorn && u
 https://{appid}-{port}.{username}.olares.com/{path}
 
 Example:
-https://{app-id}-3000.{username}.olares.com/flask-app/
+https://{app-id}-3000.{username}.olares.com/my-app/
          ↑          ↑      ↑            ↑
       app id     port   username    app path
 ```
@@ -161,7 +153,7 @@ https://{app-id}-3000.{username}.olares.com/flask-app/
 annotations:
   meta.helm.sh/release-name: app-name
   meta.helm.sh/release-namespace: namespace
-  applications.app.bytetrade.io/entrances: '[{"name":"app-name","host":"app-name-svc","port":5000,"title":"app-name","authLevel":"private","openMethod":"default"}]'
+  applications.app.bytetrade.io/entrances: '[{"name":"app-name","host":"app-name-svc","port":8080,"title":"app-name","authLevel":"private","openMethod":"default"}]'
   applications.app.bytetrade.io/default-thirdlevel-domains: '[{"appName":"app-name","entranceName":"app-name","thirdLevelDomain":"random-hash-port"}]'
   applications.app.bytetrade.io/icon: https://app.cdn.olares.com/appstore/default/defaulticon.webp
   applications.app.bytetrade.io/title: app-name
@@ -204,17 +196,11 @@ olares-urls
   OpenCode Deployed Applications
 ═══════════════════════════════════════════════
 
-▶ flask-app
+▶ my-app
   Status: ✅ Running (1/1)
-  Port: 5000
-  External: https://{app-id}-3000.{username}.olares.com/flask-app/
-  Internal: http://flask-app-svc.namespace.svc.cluster.local:5000
-
-▶ express-api
-  Status: ✅ Running (1/1)
-  Port: 3000
-  External: https://{app-id}-3000.{username}.olares.com/express-api/
-  Internal: http://express-api-svc.namespace.svc.cluster.local:3000
+  Port: 8080
+  External: https://{app-id}-3000.{username}.olares.com/my-app/
+  Internal: http://my-app-svc.namespace.svc.cluster.local:8080
 ```
 
 ### Network Architecture
@@ -232,9 +218,7 @@ OpenCode Container (port 3000 - unified entry)
 Nginx Reverse Proxy (listening on 3000)
     ↓ Path-based routing
     ├─ / → localhost:4096 (OpenCode Server mode)
-    ├─ /express-demo/ → express-demo-svc:3000
-    ├─ /flask-app/    → flask-app-svc:5000
-    └─ /test-app/     → test-app-svc:8000
+    └─ /my-app/       → my-app-svc:8080
     ↓
 Service: app-name-svc (ClusterIP)
     ↓ TCP
@@ -275,15 +259,11 @@ Olares Nginx Configuration Generator
 ============================================================
 
 1. Scanning deployed applications...
-   Found 3 applications:
-     - express-demo (port 3000)
-     - flask-app (port 5000)
-     - test-app (port 8000)
+   Found 1 application:
+     - my-app (port 8080)
 
 2. Generating Nginx configurations...
-✓ Generated config: /etc/nginx/conf.d/dev/express-demo.conf
-✓ Generated config: /etc/nginx/conf.d/dev/flask-app.conf
-✓ Generated config: /etc/nginx/conf.d/dev/test-app.conf
+✓ Generated config: /etc/nginx/conf.d/dev/my-app.conf
 ✓ Generated fixed config: /etc/nginx/conf.d/dev/opencode-server.conf (port 4096)
 
 3. Applying configuration...
@@ -301,20 +281,16 @@ After Nginx configuration, applications are accessible via:
 ```
 https://{hash}-3000.{domain}/{app-name}/
 
-Examples:
-https://{app-id}-3000.{username}.olares.com/express-demo/
-https://{app-id}-3000.{username}.olares.com/flask-app/
-https://{app-id}-3000.{username}.olares.com/test-app/
+Example:
+https://{app-id}-3000.{username}.olares.com/my-app/
 ```
 
 **Pattern 2: Port Number Path**
 ```
 https://{hash}-3000.{domain}/{port}/
 
-Examples:
-https://{app-id}-3000.{username}.olares.com/3000/  → express-demo
-https://{app-id}-3000.{username}.olares.com/5000/  → flask-app
-https://{app-id}-3000.{username}.olares.com/8000/  → test-app
+Example:
+https://{app-id}-3000.{username}.olares.com/8080/  → my-app
 ```
 
 **Fixed: OpenCode Server Mode**
@@ -329,11 +305,11 @@ https://{app-id}-3000.{username}.olares.com/
 
 **Generated Config Structure:**
 ```nginx
-# /etc/nginx/conf.d/dev/app-name.conf
+# /etc/nginx/conf.d/dev/my-app.conf
 
 # Route by application name
-location /app-name/ {
-    proxy_pass http://app-name-svc.namespace.svc.cluster.local:port/;
+location /my-app/ {
+    proxy_pass http://my-app-svc.namespace.svc.cluster.local:8080/;
     proxy_http_version 1.1;
     
     # Standard headers
@@ -357,8 +333,8 @@ location /app-name/ {
 }
 
 # Route by port number
-location /port/ {
-    proxy_pass http://app-name-svc.namespace.svc.cluster.local:port/;
+location /8080/ {
+    proxy_pass http://my-app-svc.namespace.svc.cluster.local:8080/;
     # ... same config as above
 }
 ```
@@ -397,7 +373,7 @@ location / {
 **Standard Process:**
 ```bash
 # Step 1: Deploy application
-olares-deploy my-app python:3.11-slim 5000 "python app.py"
+/root/.local/bin/olares-deploy my-app python:3.11-slim 8080 "python app.py"
 
 # Step 2: Update Nginx reverse proxy (MANDATORY)
 python3 /root/.local/bin/olares-nginx-config
@@ -527,34 +503,33 @@ Each deployed app gets:
 
 ### Example: Complete Automated Flow
 
-**User says:** "I built a Flask todo app, deploy it"
+**User says:** "I built a todo app, deploy it"
 
 **AI Response:**
 ```
-I'll deploy your Flask app to Olares right away!
+I'll deploy your app to Olares right away!
 
 Detecting configuration...
-✓ Framework: Flask
 ✓ Image: python:3.11-slim
-✓ Port: 5000
-✓ App name: flask-todo-app
+✓ Port: 8080
+✓ App name: todo-app
 
 Deploying to Olares...
-[Executing: olares-deploy flask-todo-app python:3.11-slim 5000 "pip install flask && python app.py"]
+[Executing: olares-deploy todo-app python:3.11-slim 8080 "pip install flask && python app.py"]
 
 ✅ Deployment successful!
 
 Updating Nginx reverse proxy...
 [Executing: python3 /root/.local/bin/olares-nginx-config]
 ✓ Nginx configuration updated
-✓ Generated reverse proxy config for flask-todo-app
+✓ Generated reverse proxy config for todo-app
 
-Your Flask todo app is now live at:
-🌐 https://{app-id}-3000.{username}.olares.com/flask-todo-app/
+Your todo app is now live at:
+🌐 https://{app-id}-3000.{username}.olares.com/todo-app/
 
 Alternative access methods:
-• By port: https://{app-id}-3000.{username}.olares.com/5000/
-• Internal: http://flask-todo-app-svc.namespace.svc.cluster.local:5000
+• By port: https://{app-id}-3000.{username}.olares.com/8080/
+• Internal: http://todo-app-svc.namespace.svc.cluster.local:8080
 
 The app is running in an isolated Pod with:
 - CPU: 100m-500m
@@ -564,10 +539,10 @@ The app is running in an isolated Pod with:
 Access through unified entry point (port 3000) with path-based routing.
 
 You can view logs with:
-olares-manage logs flask-todo-app
+olares-manage logs todo-app
 
 Or manage it via:
-olares-manage info flask-todo-app
+olares-manage info todo-app
 ```
 
 ---

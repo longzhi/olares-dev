@@ -1,280 +1,267 @@
-# ✅ Nginx 反向代理配置完成
+# ✅ Nginx Reverse Proxy Configuration Complete
 
-## 🎯 架构说明
+## 🎯 Architecture Overview
 
 ```
-外部请求
+External Request
   ↓
-https://{hash}-3000.onetest02.olares.com/{app-path}/
+https://{hash}-3000.{username}.olares.com/{app-path}/
   ↓
 Olares Ingress Controller
   ↓
 OpenCode Container
   ↓
-Nginx (监听 3000 端口 - 统一入口)
-  ↓ 根据 Path 路由
-  ├─ /express-demo/  → express-demo-svc:3000
-  ├─ /test-app/      → test-web-app-svc:8000
-  └─ /api/           → test-python-api-svc:9000
+Nginx (listening on port 3000 - unified entry)
+  ↓ Route based on Path
+  └─ /my-app/        → my-app-svc:8080
 ```
 
-**关键设计**：
-- ✅ **统一入口**：所有请求通过 3000 端口进入
-- ✅ **Path 路由**：根据 URL 路径区分不同应用
-- ✅ **自动配置**：扫描 Kubernetes 部署，自动生成 Nginx 配置
+**Key Design**:
+- ✅ **Unified Entry**: All requests enter through port 3000
+- ✅ **Path Routing**: Different applications based on URL path
+- ✅ **Automatic Configuration**: Scan Kubernetes deployments, auto-generate Nginx configs
 
 ---
 
-## 📦 已部署组件
+## 📦 Deployed Components
 
-### 1. Nginx 配置
-- **主配置**：`/etc/nginx/nginx.conf`
-- **默认服务器**：`/etc/nginx/conf.d/default.conf`（监听 3000）
-- **应用代理配置**：`/etc/nginx/conf.d/dev/*.conf`（自动生成）
+### 1. Nginx Configuration
+- **Main config**: `/etc/nginx/nginx.conf`
+- **Default server**: `/etc/nginx/conf.d/default.conf` (listening on 3000)
+- **Application proxy configs**: `/etc/nginx/conf.d/dev/*.conf` (auto-generated)
 
-### 2. 自动化工具
-- **配置生成器**：`/root/.local/bin/olares-nginx-config`
+### 2. Automation Tools
+- **Configuration generator**: `/root/.local/bin/olares-nginx-config`
 
 ---
 
-## 🚀 使用方法
+## 🚀 Usage
 
-### 自动生成所有应用的代理配置
+### Auto-Generate All Application Proxy Configurations
 ```bash
 python3 /root/.local/bin/olares-nginx-config
 ```
 
-输出示例：
+Example output:
 ```
-Olares Nginx 配置生成器
+Olares Nginx Configuration Generator
 ============================================================
 
-1. 扫描已部署的应用...
-  找到 4 个应用:
-    - express-demo (端口 3000)
-    - flask-hello (端口 5000)
-    - test-python-api (端口 9000)
-    - test-web-app (端口 8000)
+1. Scanning deployed applications...
+   Found 1 application:
+     - my-app (port 8080)
 
-2. 生成 Nginx 配置...
-✓ 生成配置: /etc/nginx/conf.d/dev/express-demo.conf
-✓ 生成配置: /etc/nginx/conf.d/dev/flask-hello.conf
-✓ 生成配置: /etc/nginx/conf.d/dev/test-python-api.conf
-✓ 生成配置: /etc/nginx/conf.d/dev/test-web-app.conf
+2. Generating Nginx configurations...
+✓ Generated config: /etc/nginx/conf.d/dev/my-app.conf
 
-3. 应用配置...
-✓ Nginx 配置测试通过
-✓ Nginx 重载成功
+3. Applying configuration...
+✓ Nginx configuration test passed
+✓ Nginx reloaded successfully
 
-✅ 配置完成！
+✅ Configuration complete!
 ```
 
-### 查看 Nginx 状态
+### Check Nginx Status
 ```bash
 python3 /root/.local/bin/olares-nginx-config status
 ```
 
-### 手动重载 Nginx
+### Manually Reload Nginx
 ```bash
 nginx -s reload
 ```
 
-### 查看生成的配置
+### View Generated Configuration
 ```bash
 cat /etc/nginx/conf.d/dev/express-demo.conf
 ```
 
 ---
 
-## 🌐 访问应用
+## 🌐 Accessing Applications
 
-### 通过应用名称访问
+### Access by Application Name
 ```
-http://localhost:3000/express-demo/
-http://localhost:3000/test-app/
-http://localhost:3000/api-service/
+http://localhost:3000/my-app/
 ```
 
-### 通过端口号访问
+### Access by Port Number
 ```
-http://localhost:3000/3000/  → express-demo
-http://localhost:3000/8000/  → test-web-app
-http://localhost:3000/9000/  → test-python-api
+http://localhost:3000/8080/  → my-app
 ```
 
-### 外部访问（通过 Olares Ingress）
+### External Access (via Olares Ingress)
 ```
-https://{hash}-3000.onetest02.olares.com/express-demo/
-https://{hash}-3000.onetest02.olares.com/test-app/
+https://{hash}-3000.{username}.olares.com/my-app/
 ```
 
 ---
 
-## 📝 配置示例
+## 📝 Configuration Examples
 
-### 生成的 Nginx 配置结构
+### Generated Nginx Configuration Structure
 ```nginx
-# /etc/nginx/conf.d/dev/express-demo.conf
+# /etc/nginx/conf.d/dev/my-app.conf
 
-# 通过应用名访问
-location /express-demo/ {
-    proxy_pass http://express-demo-svc.opencode-dev-onetest02.svc.cluster.local:3000/;
+# Access by application name
+location /my-app/ {
+    proxy_pass http://my-app-svc.{namespace}.svc.cluster.local:8080/;
     proxy_http_version 1.1;
     
-    # 标准代理头
+    # Standard proxy headers
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     
-    # WebSocket 支持（对 code-server 等应用很重要）
+    # WebSocket support (important for code-server, etc.)
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $http_connection;
     
-    # 超时设置（支持长连接）
+    # Timeout settings (support for long connections)
     proxy_connect_timeout 60s;
     proxy_send_timeout 300s;
     proxy_read_timeout 300s;
     
-    # 禁用缓冲（支持实时响应）
+    # Disable buffering (support for real-time responses)
     proxy_buffering off;
     proxy_request_buffering off;
 }
 
-# 通过端口号访问
-location /3000/ {
-    proxy_pass http://express-demo-svc.opencode-dev-onetest02.svc.cluster.local:3000/;
-    # ... 相同配置
+# Access by port number
+location /8080/ {
+    proxy_pass http://my-app-svc.{namespace}.svc.cluster.local:8080/;
+    # ... same config
 }
 ```
 
 ---
 
-## 🔧 集成到部署流程
+## 🔧 Integration into Deployment Workflow
 
-### 方式 1：手动集成
-每次部署新应用后运行：
+### Method 1: Manual Integration
+Run after deploying each new application:
 ```bash
 python3 /root/.local/bin/olares-nginx-config
 ```
 
-### 方式 2：自动集成
-修改 `/root/.local/bin/olares-deploy` 脚本，在部署成功后自动运行配置生成器。
+### Method 2: Automatic Integration
+Modify the `/root/.local/bin/olares-deploy` script to automatically run the configuration generator after successful deployment.
 
-添加到脚本末尾：
+Add to end of script:
 ```bash
-# 自动更新 Nginx 配置
+# Auto-update Nginx configuration
 if [ -f /root/.local/bin/olares-nginx-config ]; then
     echo ""
-    log_step "更新 Nginx 反向代理配置..."
+    echo "Updating Nginx reverse proxy configuration..."
     python3 /root/.local/bin/olares-nginx-config > /dev/null 2>&1 || true
 fi
 ```
 
 ---
 
-## ✅ 验证测试
+## ✅ Verification Tests
 
-### 1. 测试健康检查
+### 1. Test Health Check
 ```bash
 curl http://localhost:3000/health
-# 预期输出: healthy
+# Expected output: healthy
 ```
 
-### 2. 测试应用代理
+### 2. Test Application Proxy
 ```bash
-# Express 应用
-curl http://localhost:3000/express-demo/
-# 预期输出: <h1>Express Demo</h1>
+# Test application
+curl http://localhost:3000/my-app/
+# Expected output: <h1>My App</h1>
 
-# Python 应用
-curl http://localhost:3000/8000/
-# 预期输出: HTML directory listing or app response
+# Or by port
+curl http://localhost:3000/8080/
+# Expected output: same as above
 ```
 
-### 3. 检查 Nginx 进程
+### 3. Check Nginx Processes
 ```bash
 ps aux | grep nginx
-# 预期: 看到 master 和多个 worker 进程
+# Expected: see master and multiple worker processes
 ```
 
-### 4. 检查监听端口
+### 4. Check Listening Ports
 ```bash
 ss -tlnp | grep :3000
-# 预期: Nginx 监听在 3000 端口
+# Expected: Nginx listening on port 3000
 ```
 
 ---
 
-## 🐛 故障排查
+## 🐛 Troubleshooting
 
-### Nginx 未启动
+### Nginx Not Started
 ```bash
-# 检查配置
+# Check configuration
 nginx -t
 
-# 启动 Nginx
+# Start Nginx
 nginx
 
-# 查看错误日志
+# View error log
 tail -f /tmp/nginx-error.log
 ```
 
-### 应用代理 502 错误
-1. 检查应用 Pod 是否运行：
+### Application Proxy 502 Error
+1. Check if application Pod is running:
    ```bash
-   /tmp/kubectl get pods -n opencode-dev-onetest02 -l app=express-demo
+   /tmp/kubectl get pods -n {namespace} -l app=my-app
    ```
 
-2. 检查 Service 是否存在：
+2. Check if Service exists:
    ```bash
-   /tmp/kubectl get svc -n opencode-dev-onetest02
+   /tmp/kubectl get svc -n {namespace}
    ```
 
-3. 测试 Service 连接：
+3. Test Service connectivity:
    ```bash
-   curl http://express-demo-svc.opencode-dev-onetest02.svc.cluster.local:3000
+   curl http://my-app-svc.{namespace}.svc.cluster.local:8080
    ```
 
-### 配置未生效
+### Configuration Not Applied
 ```bash
-# 重新生成并重载
+# Regenerate and reload
 python3 /root/.local/bin/olares-nginx-config
 
-# 或手动重载
+# Or manually reload
 nginx -s reload
 ```
 
 ---
 
-## 📊 端口分配
+## 📊 Port Allocation
 
-| 端口 | 服务 | 说明 |
-|------|------|------|
-| 3000 | Nginx | **统一入口** - 所有外部请求通过这里 |
-| 5000 | code-server | VS Code IDE 界面 |
-| 8000 | OpenCode AI | AI 辅助编程服务 |
-| 其他 | 应用 Pods | 通过 Kubernetes Service 访问 |
-
----
-
-## 🎉 完成状态
-
-✅ Nginx 已启动并监听 3000 端口  
-✅ 自动配置生成器已部署  
-✅ 为所有已部署应用生成了代理配置  
-✅ 支持 WebSocket（对 code-server 等重要）  
-✅ 支持长连接和实时响应  
-✅ 内部测试通过  
-
-### 待验证
-⏳ 外部访问测试（需要通过浏览器访问 Olares URL）
+| Port | Service | Description |
+|------|---------|-------------|
+| 3000 | Nginx | **Unified Entry** - All external requests through here |
+| 5000 | code-server | VS Code IDE interface |
+| 8000 | OpenCode AI | AI-assisted programming service |
+| Others | Application Pods | Accessed through Kubernetes Service |
 
 ---
 
-## 📚 相关文档
+## 🎉 Completion Status
 
-- 部署脚本：`/root/.local/bin/olares-deploy`
-- 配置生成器：`/root/.local/bin/olares-nginx-config`
-- Nginx 主配置：`/etc/nginx/nginx.conf`
-- Olares 开发技能：`/root/.config/opencode/skills/olares-dev.md`
+✅ Nginx started and listening on port 3000  
+✅ Auto-configuration generator deployed  
+✅ Proxy configurations generated for all deployed applications  
+✅ WebSocket support (important for code-server, etc.)  
+✅ Long connection and real-time response support  
+✅ Internal testing passed  
+
+### To Be Verified
+⏳ External access testing (needs browser testing via Olares URL)
+
+---
+
+## 📚 Related Documentation
+
+- Deployment script: `/root/.local/bin/olares-deploy`
+- Configuration generator: `/root/.local/bin/olares-nginx-config`
+- Nginx main config: `/etc/nginx/nginx.conf`
+- Olares development skill: `/root/.config/opencode/skills/olares-dev.md`
