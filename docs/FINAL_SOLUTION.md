@@ -29,9 +29,7 @@ OpenCode Container (port 3000)
 Nginx Reverse Proxy
   ↓ Path routing
   ├─ /                    → localhost:4096 (OpenCode Server)
-  ├─ /express-demo/       → express-demo-svc:3000
-  ├─ /flask-app/          → flask-app-svc:5000
-  ├─ /test-app/           → test-app-svc:8000
+  ├─ /my-app/             → my-app-svc:8080
   └─ /health              → Nginx health check
   ↓
 Kubernetes Services → Pods
@@ -87,9 +85,7 @@ https://{app-id}-3000.{username}.olares.com/app-name/
 ### Configuration File Locations
 ```
 /etc/nginx/conf.d/dev/
-├── express-demo.conf          # Application config (auto-generated)
-├── flask-hello.conf           # Application config (auto-generated)
-├── test-app.conf              # Application config (auto-generated)
+├── my-app.conf                # Application config (auto-generated)
 └── opencode-server.conf       # OpenCode Server fixed config
 ```
 
@@ -101,7 +97,7 @@ https://{app-id}-3000.{username}.olares.com/app-name/
 # OpenCode runs at root path, applications at sub-paths
 
 # Fallback: All other paths go to OpenCode Server (must be last)
-# Application-specific paths (like /express-demo/) will be matched first
+# Application-specific paths (like /my-app/) will be matched first
 location / {
     proxy_pass http://localhost:4096;
     proxy_http_version 1.1;
@@ -199,10 +195,8 @@ nginx: worker process (x24)
 ### Configuration Files
 ```bash
 $ ls /etc/nginx/conf.d/dev/
-express-demo.conf
-flask-hello.conf
+my-app.conf
 opencode-server.conf  ← Fixed configuration
-test-app.conf
 ```
 
 ### Port Listening

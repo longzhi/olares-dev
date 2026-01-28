@@ -166,7 +166,7 @@ OpenCode 应用管理工具
   $0 info flask-hello
   $0 logs flask-hello -f
   $0 delete flask-hello
-  $0 test express-demo
+    $0 test my-app
 
 EOF
 }

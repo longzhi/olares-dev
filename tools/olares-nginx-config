@@ -112,7 +112,7 @@ def generate_opencode_server_config():
 # OpenCode runs at root path, applications at sub-paths
 
 # Fallback: All other paths go to OpenCode Server (must be last)
-# Application-specific paths (like /express-demo/) will be matched first
+# Application-specific paths (like /my-app/) will be matched first
 location / {
     proxy_pass http://localhost:4096;
     proxy_http_version 1.1;

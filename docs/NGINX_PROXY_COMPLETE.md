@@ -73,7 +73,7 @@ nginx -s reload
 
 ### View Generated Configuration
 ```bash
-cat /etc/nginx/conf.d/dev/express-demo.conf
+cat /etc/nginx/conf.d/dev/my-app.conf
 ```
 
 ---
