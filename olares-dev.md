@@ -630,6 +630,176 @@ python -c "import psycopg2; psycopg2.connect('$DATABASE_URL')"
 # Database is auto-created when app is installed via Olares
 ```
 
+### Database Isolation with PostgreSQL Schema (DevBox Development)
+
+When developing multiple applications in a single DevBox (like OpenCode), all apps share the same database. Use **PostgreSQL Schema** to isolate data between applications.
+
+**Why Schema Isolation?**
+
+| Deployment Mode | Database Isolation | Notes |
+|-----------------|-------------------|-------|
+| **Market Package** | Automatic (each app gets own database) | Configured via `middleware.postgres.databases` |
+| **DevBox Development** | Shared database | All apps in container share same DB credentials |
+
+For DevBox, use Schema to achieve logical isolation without needing separate databases.
+
+**Python Example: Schema-based Isolation**
+
+```python
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+class AppDatabase:
+    """Database wrapper with schema isolation for DevBox development"""
+
+    def __init__(self, app_name: str):
+        self.app_name = app_name
+        self.schema = app_name.replace('-', '_')  # Schema names can't have hyphens
+        self._init_schema()
+
+    def get_connection(self):
+        """Get database connection with schema set"""
+        conn = psycopg2.connect(
+            host=os.environ.get('DB_HOST'),
+            port=os.environ.get('DB_PORT', '5432'),
+            user=os.environ.get('DB_USER'),
+            password=os.environ.get('DB_PASSWORD'),
+            database=os.environ.get('DB_DATABASE'),
+            cursor_factory=RealDictCursor,
+            options=f'-c search_path={self.schema}'  # Auto-use this schema
+        )
+        return conn
+
+    def _init_schema(self):
+        """Create schema if not exists"""
+        # Connect without schema first
+        conn = psycopg2.connect(
+            host=os.environ.get('DB_HOST'),
+            port=os.environ.get('DB_PORT', '5432'),
+            user=os.environ.get('DB_USER'),
+            password=os.environ.get('DB_PASSWORD'),
+            database=os.environ.get('DB_DATABASE')
+        )
+        cur = conn.cursor()
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS {self.schema}')
+        conn.commit()
+        cur.close()
+        conn.close()
+
+# Usage: Each app uses its own schema
+# App 1: Todo App
+todo_db = AppDatabase('todo-app')
+conn = todo_db.get_connection()
+conn.execute('CREATE TABLE IF NOT EXISTS tasks (id SERIAL PRIMARY KEY, title TEXT)')
+# Creates: todo_app.tasks
+
+# App 2: Blog App
+blog_db = AppDatabase('blog-app')
+conn = blog_db.get_connection()
+conn.execute('CREATE TABLE IF NOT EXISTS posts (id SERIAL PRIMARY KEY, content TEXT)')
+# Creates: blog_app.posts
+```
+
+**Node.js Example: Schema-based Isolation**
+
+```javascript
+const { Pool } = require('pg');
+
+class AppDatabase {
+  constructor(appName) {
+    this.schema = appName.replace(/-/g, '_');
+    this.pool = new Pool({
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || '5432'),
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_DATABASE,
+    });
+  }
+
+  async init() {
+    await this.pool.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
+    await this.pool.query(`SET search_path TO ${this.schema}`);
+  }
+
+  async query(sql, params) {
+    // Ensure schema is set for each query
+    const client = await this.pool.connect();
+    try {
+      await client.query(`SET search_path TO ${this.schema}`);
+      return await client.query(sql, params);
+    } finally {
+      client.release();
+    }
+  }
+}
+
+// Usage
+const todoDb = new AppDatabase('todo-app');
+await todoDb.init();
+await todoDb.query('CREATE TABLE IF NOT EXISTS tasks (id SERIAL, title TEXT)');
+```
+
+**SQLAlchemy Example: Schema-based Isolation**
+
+```python
+import os
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+def create_app_engine(app_name: str):
+    """Create SQLAlchemy engine with schema isolation"""
+    schema = app_name.replace('-', '_')
+
+    database_url = (
+        f"postgresql://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
+        f"@{os.environ['DB_HOST']}:{os.environ.get('DB_PORT', '5432')}"
+        f"/{os.environ['DB_DATABASE']}"
+    )
+
+    engine = create_engine(
+        database_url,
+        connect_args={'options': f'-c search_path={schema}'},
+        pool_pre_ping=True
+    )
+
+    # Create schema if not exists
+    with engine.connect() as conn:
+        conn.execute(f'CREATE SCHEMA IF NOT EXISTS {schema}')
+        conn.commit()
+
+    return engine, schema
+
+# Usage with ORM
+engine, schema = create_app_engine('my-app')
+Base = declarative_base()
+Base.metadata.schema = schema  # All tables use this schema
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100))
+
+Base.metadata.create_all(engine)  # Creates: my_app.users
+```
+
+**Best Practices for Schema Isolation:**
+
+1. **Naming Convention**: Use app name as schema name (replace hyphens with underscores)
+2. **Initialize Early**: Create schema at app startup before any table operations
+3. **Set search_path**: Always set `search_path` to ensure queries target correct schema
+4. **Migration Ready**: When publishing to Market, schema code still works (just uses default `public` schema if not set)
+
+**Schema vs Separate Databases:**
+
+| Aspect | Schema Isolation | Separate Databases |
+|--------|-----------------|-------------------|
+| Setup | Code-level, automatic | Requires new middleware config |
+| Performance | Shared resources | Isolated resources |
+| Backup | Single backup includes all | Per-database backup |
+| Use Case | DevBox development | Production (Market Package) |
+
 ---
 
 ## 🚀 DEVBOX QUICK DEPLOY (Automatic Deployment After Development)
