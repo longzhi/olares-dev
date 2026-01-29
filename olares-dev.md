@@ -20,16 +20,16 @@
 │  1. User requests development                                     │
 │     ↓                                                             │
 │  2. AI develops the application                                   │
-│     • Detect if database needed → Use SQLite for DevBox           │
+│     • Detect if database needed → Use PostgreSQL (injected)       │
 │     • Write complete, runnable code                               │
 │     • Include all necessary files                                 │
 │     ↓                                                             │
-│  3. AI MUST end with deployment prompt (see below)                │
+│  3. AI MUST end with publish prompt (see below)                   │
 │     ↓                                                             │
-│  4. User confirms deployment                                      │
+│  4. User confirms publish                                         │
 │     ↓                                                             │
-│  5. AI executes deployment automatically                          │
-│     • Run olares-deploy                                           │
+│  5. AI executes publish automatically                             │
+│     • Run olares-deploy to Olares                                 │
 │     • Update Nginx config                                         │
 │     • Report external URL                                         │
 │                                                                   │
@@ -47,26 +47,24 @@ After completing ANY development task, you MUST end your response with EXACTLY:
 
 **下一步 / Next Step:**
 
-只需回复以下任意一个词，我将自动部署：
-Just reply with any of these words, and I'll deploy automatically:
+只需回复以下任意一个词，我将自动发布：
+Just reply with any of these words, and I'll publish automatically:
 
 | 命令 | Command | 效果 |
 |------|---------|------|
-| **部署** | **deploy** | 快速部署到 Olares 测试环境 |
-| **发布** | **publish** | 打包并发布到 Olares Market |
+| **发布** | **publish** | 发布到 Olares 正式环境 |
 
-💡 推荐先使用 "部署" 进行测试，确认无误后再 "发布"。
+💡 回复 "发布" 或 "publish" 即可完成发布。
 ```
 
-### Deployment Triggers (AUTO-EXECUTE)
+### Publish Triggers (AUTO-EXECUTE)
 
-**Trigger Keywords (User confirms deployment):**
-- Quick Deploy: "部署" / "deploy" / "好" / "可以" / "OK" / "yes" / "确认" / "同意" / "go" / "上线"
-- Package/Publish: "发布" / "publish" / "打包" / "package" / "release"
+**Trigger Keywords (User confirms publish):**
+- Publish: "发布" / "publish" / "好" / "可以" / "OK" / "yes" / "确认" / "同意" / "go" / "上线" / "打包" / "package" / "release"
 
-**CRITICAL: When user says ANY of these after development, IMMEDIATELY execute deployment. NO further confirmation needed.**
+**CRITICAL: When user says ANY of these after development, IMMEDIATELY execute publish to Olares. NO further confirmation needed.**
 
-**Auto-Deploy Execution:**
+**Auto-Publish Execution:**
 ```bash
 # 1. Detect app configuration
 APP_NAME="<derived-from-code>"
@@ -74,7 +72,7 @@ IMAGE="python:3.11-slim"  # or detected from code
 PORT="8080"
 COMMAND="<detected-startup-command>"
 
-# 2. Execute deployment
+# 2. Execute publish to Olares
 /root/.local/bin/olares-deploy "$APP_NAME" "$IMAGE" "$PORT" "$COMMAND"
 
 # 3. Update Nginx (MANDATORY)
@@ -93,10 +91,10 @@ echo "🌐 Your app is live at: https://xxx-3000.xxx.olares.com/$APP_NAME/"
 - Code contains: database connection strings, ORM setup, SQL queries
 
 **AUTOMATIC BEHAVIOR:**
-1. **DevBox Mode**: Use SQLite (embedded, zero config)
-2. **Market Package Mode**: Use PostgreSQL via middleware
-3. **NEVER** ask user which database to use - just use the appropriate one
-4. **NEVER** suggest installing a separate database
+1. **Always use PostgreSQL** - injected by system or container environment
+2. **NEVER** ask user which database to use - just use PostgreSQL
+3. **NEVER** suggest installing a separate database
+4. **NEVER** use SQLite - always use the injected PostgreSQL
 
 **Database Auto-Detection:**
 ```python
@@ -125,10 +123,8 @@ Olares is a self-hosted cloud operating system. Applications are deployed as Hel
 - **System Services**: PostgreSQL, Redis, MongoDB, Zinc (search) are pre-installed
 - **User Isolation**: Each user gets isolated app instances
 
-**THREE DEPLOYMENT METHODS:**
-1. **DevBox Quick Deploy** (Development) - Direct kubectl deployment with automatic external access
-2. **Market Package** (Publishing) - Helm chart package for Olares Market submission
-3. **GitHub Submission** (Public Distribution) - Submit to official Olares Market repository
+**DEPLOYMENT METHOD:**
+- **Olares Publish** - Direct deployment to Olares production environment via olares-deploy command
 
 ---
 
@@ -136,106 +132,17 @@ Olares is a self-hosted cloud operating system. Applications are deployed as Hel
 
 **CRITICAL**: When user's application needs data persistence, ALWAYS use Olares built-in PostgreSQL. NEVER suggest installing a separate database.
 
-### Database Strategy by Deployment Mode
+### Database Usage
 
-| Mode | Database Approach | When to Use |
-|------|-------------------|-------------|
-| **DevBox Quick Deploy** | SQLite (embedded) | Fast development & testing |
-| **Market Package** | PostgreSQL (middleware) | Production, user data persistence |
+**Always use PostgreSQL** - The database connection is automatically injected by the system or container environment.
 
-### DevBox Mode: Use SQLite for Development
+**Why PostgreSQL:**
+- ✅ Production-ready from the start
+- ✅ Connection automatically injected via environment variables
+- ✅ No separate database installation needed
+- ✅ Full SQL feature support
 
-In DevBox mode, use SQLite for rapid development. The database file persists in the container.
-
-**Why SQLite for DevBox:**
-- ✅ Zero configuration needed
-- ✅ Works immediately
-- ✅ Easy migration to PostgreSQL later
-- ✅ Same SQL syntax (mostly compatible)
-
-**Example: Flask App with SQLite (DevBox)**
-
-```python
-# app.py - Development version with SQLite
-import os
-import sqlite3
-from flask import Flask, jsonify, request
-
-app = Flask(__name__)
-
-# Database path (persists in container)
-DB_PATH = os.environ.get('DB_PATH', '/app/data/app.db')
-
-def get_db():
-    """Get database connection"""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    """Initialize database schema"""
-    conn = get_db()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS todos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            completed BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-# Initialize on startup
-init_db()
-
-@app.route('/api/todos', methods=['GET'])
-def get_todos():
-    conn = get_db()
-    todos = conn.execute('SELECT * FROM todos ORDER BY created_at DESC').fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in todos])
-
-@app.route('/api/todos', methods=['POST'])
-def create_todo():
-    data = request.get_json()
-    conn = get_db()
-    cursor = conn.execute('INSERT INTO todos (title) VALUES (?)', (data['title'],))
-    todo_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return jsonify({'id': todo_id, 'title': data['title'], 'completed': False}), 201
-
-@app.route('/api/todos/<int:todo_id>', methods=['PUT'])
-def update_todo(todo_id):
-    data = request.get_json()
-    conn = get_db()
-    conn.execute('UPDATE todos SET completed = ? WHERE id = ?', (data.get('completed', False), todo_id))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
-
-@app.route('/api/todos/<int:todo_id>', methods=['DELETE'])
-def delete_todo(todo_id):
-    conn = get_db()
-    conn.execute('DELETE FROM todos WHERE id = ?', (todo_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
-```
-
-**Deploy to DevBox:**
-```bash
-olares-deploy todo-app python:3.11-slim 8080 "pip install flask && python app.py"
-```
-
-### Market Package Mode: Use PostgreSQL
-
-For production apps published to Olares Market, use the built-in PostgreSQL middleware.
+### PostgreSQL Configuration
 
 **Step 1: Configure OlaresManifest.yaml**
 
@@ -341,59 +248,6 @@ flask
 psycopg2-binary
 ```
 
-### Database Migration Strategy
-
-**From DevBox (SQLite) → Market Package (PostgreSQL):**
-
-1. **Schema**: SQLite and PostgreSQL SQL syntax is mostly compatible
-   - Change `AUTOINCREMENT` → `SERIAL`
-   - Change `?` placeholders → `%s`
-   
-2. **Code Changes**:
-   - Import: `sqlite3` → `psycopg2`
-   - Connection: file path → connection string
-   - Row factory: `sqlite3.Row` → `RealDictCursor`
-
-3. **Best Practice**: Use SQLAlchemy ORM for database-agnostic code
-
-**Example: SQLAlchemy (Works with Both SQLite and PostgreSQL)**
-
-```python
-# models.py - Database-agnostic with SQLAlchemy
-import os
-from flask_sqlalchemy import SQLAlchemy
-from flask import Flask
-
-app = Flask(__name__)
-
-# Auto-detect database type from environment
-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-db = SQLAlchemy(app)
-
-class Todo(db.Model):
-    __tablename__ = 'todos'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(200), nullable=False)
-    completed = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'title': self.title,
-            'completed': self.completed,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-
-# Create tables
-with app.app_context():
-    db.create_all()
-```
-
 ### Database Initialization Patterns
 
 **Pattern 1: Auto-create on Startup (Recommended for Simple Apps)**
@@ -401,9 +255,11 @@ with app.app_context():
 # In app.py - run init_db() at module load
 def init_db():
     conn = get_db()
-    # Create tables if not exist
-    conn.execute('CREATE TABLE IF NOT EXISTS ...')
+    cur = conn.cursor()
+    cur.execute('CREATE TABLE IF NOT EXISTS ...')
     conn.commit()
+    cur.close()
+    conn.close()
 
 init_db()  # Called once on startup
 ```
@@ -417,17 +273,41 @@ alembic revision --autogenerate -m "Initial migration"
 alembic upgrade head
 ```
 
-**Pattern 3: Init Container (For Market Package)**
-```yaml
-# templates/deployment.yaml
-spec:
-  initContainers:
-    - name: init-db
-      image: "your-image"
-      command: ["python", "init_db.py"]
-      env:
-        - name: DATABASE_URL
-          value: "{{ .Values.postgres.host }}..."
+**Pattern 3: Using SQLAlchemy ORM**
+```python
+# models.py - Using SQLAlchemy with PostgreSQL
+import os
+from flask_sqlalchemy import SQLAlchemy
+from flask import Flask
+
+app = Flask(__name__)
+
+# Get PostgreSQL connection from environment
+DATABASE_URL = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+class Todo(db.Model):
+    __tablename__ = 'todos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    completed = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'completed': self.completed,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+# Create tables
+with app.app_context():
+    db.create_all()
 ```
 
 ### Quick Reference: Database Environment Variables
@@ -630,18 +510,18 @@ python -c "import psycopg2; psycopg2.connect('$DATABASE_URL')"
 # Database is auto-created when app is installed via Olares
 ```
 
-### Database Isolation with PostgreSQL Schema (DevBox Development)
+### Database Isolation with PostgreSQL Schema
 
-When developing multiple applications in a single DevBox (like OpenCode), all apps share the same database. Use **PostgreSQL Schema** to isolate data between applications.
+When developing multiple applications that share the same PostgreSQL instance, use **PostgreSQL Schema** to isolate data between applications.
 
 **Why Schema Isolation?**
 
-| Deployment Mode | Database Isolation | Notes |
-|-----------------|-------------------|-------|
-| **Market Package** | Automatic (each app gets own database) | Configured via `middleware.postgres.databases` |
-| **DevBox Development** | Shared database | All apps in container share same DB credentials |
+| Scenario | Database Isolation | Notes |
+|----------|-------------------|-------|
+| **Single App** | Use default `public` schema | Simple, no extra config needed |
+| **Multiple Apps** | Schema per app | Logical isolation in shared database |
 
-For DevBox, use Schema to achieve logical isolation without needing separate databases.
+Use Schema to achieve logical isolation without needing separate databases.
 
 **Python Example: Schema-based Isolation**
 
@@ -651,7 +531,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 class AppDatabase:
-    """Database wrapper with schema isolation for DevBox development"""
+    """Database wrapper with schema isolation for multi-app environments"""
 
     def __init__(self, app_name: str):
         self.app_name = app_name
@@ -789,7 +669,7 @@ Base.metadata.create_all(engine)  # Creates: my_app.users
 1. **Naming Convention**: Use app name as schema name (replace hyphens with underscores)
 2. **Initialize Early**: Create schema at app startup before any table operations
 3. **Set search_path**: Always set `search_path` to ensure queries target correct schema
-4. **Migration Ready**: When publishing to Market, schema code still works (just uses default `public` schema if not set)
+4. **Flexibility**: Schema code works with default `public` schema if not set
 
 **Schema vs Separate Databases:**
 
@@ -798,13 +678,13 @@ Base.metadata.create_all(engine)  # Creates: my_app.users
 | Setup | Code-level, automatic | Requires new middleware config |
 | Performance | Shared resources | Isolated resources |
 | Backup | Single backup includes all | Per-database backup |
-| Use Case | DevBox development | Production (Market Package) |
+| Use Case | Multiple apps sharing DB | Single app per database |
 
 ---
 
-## 🚀 DEVBOX QUICK DEPLOY (Automatic Deployment After Development)
+## 🚀 OLARES PUBLISH (Automatic Deployment After Development)
 
-**When to Use:** User completes application development in OpenCode and wants immediate deployment for testing.
+**When to Use:** User completes application development and wants to publish to Olares production environment.
 
 ### Prerequisites Check
 
@@ -820,7 +700,7 @@ cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
 /tmp/kubectl auth can-i create deployments -n $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
 ```
 
-### Quick Deploy Tools
+### Publish Tools
 
 **Available Tools:**
 - `/root/.local/bin/olares-deploy` - Deploy applications to Kubernetes
@@ -1672,9 +1552,11 @@ Olares automatically injects these variables (accessible via `.Values.*`):
 
 ---
 
-## 🚀 GITHUB SUBMISSION (Olares Market Publishing)
+## 📚 ADVANCED: GitHub Market Submission (Optional Reference)
 
-To publish your application to the official Olares Market, you must submit it through GitHub.
+> **Note:** This section is for advanced users who want to publish their applications to the public Olares Market. The primary publishing method is via `olares-deploy` command (see "OLARES PUBLISH" section above).
+
+To publish your application to the official public Olares Market, you can optionally submit it through GitHub.
 
 ### Prerequisites
 
@@ -1980,56 +1862,18 @@ charlie
 
 ## Development Workflow Summary
 
-### Quick Development Test (DevBox)
+### Publish to Olares
 
 ```bash
 # 1. Develop application locally or in OpenCode
-# 2. Deploy for testing
+# 2. Publish to Olares
 olares-deploy myapp python:3.11-slim 8080 "python app.py"
 
 # 3. Update Nginx
 python3 /root/.local/bin/olares-nginx-config
 
-# 4. Test at: https://xxx-3000.domain.com/myapp/
+# 4. Access at: https://xxx-3000.domain.com/myapp/
 # 5. View logs: olares-manage logs myapp
-```
-
-### Package for Studio Upload
-
-```bash
-# 1. Create chart structure
-mkdir -p myapp/templates
-
-# 2. Create Chart.yaml, OlaresManifest.yaml, deployment.yaml, service.yaml
-
-# 3. Package
-helm package myapp/
-
-# 4. Upload via Studio UI → Custom → Upload → myapp-0.1.0.tgz
-```
-
-### Publish to Market
-
-```bash
-# 1. Fork https://github.com/beclab/apps
-git clone https://github.com/YOUR_USERNAME/apps.git
-
-# 2. Add your chart
-cp -r myapp/ apps/
-
-# 3. Create owners file
-echo "your-github-username" > apps/myapp/owners
-
-# 4. Commit and push
-git add apps/myapp/
-git commit -m "Add myapp application"
-git push origin main
-
-# 5. Create PR with title: [NEW][myapp][0.1.0]My Application
-
-# 6. Mark "Ready for review" when ready
-
-# 7. Wait for GitBot validation and auto-merge
 ```
 
 ---
@@ -2087,7 +1931,7 @@ options:
 
 ### App Not Starting
 
-1. Check container logs in DevBox → Containers
+1. Check container logs via `olares-manage logs <app-name>`
 2. Verify image exists and is pullable
 3. Check resource limits (memory/CPU too low?)
 
@@ -2123,7 +1967,7 @@ helm lint myapp/
 # Template render (debug)
 helm template myapp myapp/ --debug
 
-# DevBox deployment
+# Olares deployment
 olares-deploy myapp python:3.11-slim 8080 "python app.py"
 
 # Update Nginx reverse proxy
