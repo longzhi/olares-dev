@@ -105,6 +105,7 @@ spec:
       containers:
       - name: ${APP_NAME}
         image: ${IMAGE}${CONTAINER_COMMAND}
+        workingDir: /app
         ports:
         - containerPort: ${PORT}
           name: http
@@ -115,6 +116,15 @@ spec:
           limits:
             cpu: "500m"
             memory: "512Mi"
+        volumeMounts:
+        - name: workspace
+          mountPath: /app
+          subPath: ${APP_NAME}
+      volumes:
+      - name: workspace
+        hostPath:
+          path: /root/workspace
+          type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service
@@ -177,22 +187,12 @@ echo ""
 $KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE"
 echo ""
 
-CLUSTER_IP=$($KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
-
 log_info "应用已部署完成！"
 echo ""
-echo "  ✅ 内部访问地址（集群内）:"
-echo "    http://${APP_NAME}-svc.${NAMESPACE}.svc.cluster.local:${PORT}"
-echo "    http://${CLUSTER_IP}:${PORT}"
+echo "  🌐 访问地址: https://${THIRD_LEVEL_DOMAIN}.${OWNER}.olares.com/${APP_NAME}/"
 echo ""
-log_warning "  ⚠️  外部访问配置已添加 entrance annotations"
-log_warning "  需要 Olares 的 Ingress Controller 处理才能从浏览器访问"
-log_warning "  第三级域名: ${THIRD_LEVEL_DOMAIN}"
+echo "  📁 代码目录: /root/workspace/${APP_NAME}"
 echo ""
-echo "  查看日志:"
-echo "    $KUBECTL logs -n $NAMESPACE -l app=$APP_NAME -f"
-echo ""
-echo "  删除应用:"
-echo "    $KUBECTL delete deployment $APP_NAME -n $NAMESPACE"
-echo "    $KUBECTL delete service ${APP_NAME}-svc -n $NAMESPACE"
+echo "  查看日志: olares-manage logs ${APP_NAME}"
+echo "  删除应用: olares-manage delete ${APP_NAME}"
 echo ""

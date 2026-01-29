@@ -123,6 +123,12 @@ Olares is a self-hosted cloud operating system. Applications are deployed as Hel
 - **System Services**: PostgreSQL, Redis, MongoDB, Zinc (search) are pre-installed
 - **User Isolation**: Each user gets isolated app instances
 
+**DEVELOPMENT DIRECTORY:**
+- **所有应用代码都在 `/root/workspace` 目录下创建**
+- 每个应用一个子目录：`/root/workspace/<app-name>/`
+- 部署时自动挂载到容器的 `/app` 目录
+- 代码修改后容器内立即生效（无需重新部署）
+
 **DEPLOYMENT METHOD:**
 - **Olares Publish** - Direct deployment to Olares production environment via olares-deploy command
 
@@ -758,34 +764,30 @@ olares-deploy my-app python:3.11-slim 8080 "pip install flask && python app.py"
    python3 /root/.local/bin/olares-nginx-config
    ```
 
-6. **Extract External URL**
+6. **Extract Access URL**
    ```bash
    # Get the third-level domain from deployment
    THIRD_LEVEL=$(kubectl get deployment "$APP_NAME" -n "$NAMESPACE" \
        -o jsonpath='{.metadata.annotations.applications\.app\.bytetrade\.io/default-thirdlevel-domains}' \
        | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['thirdLevelDomain'])")
-   
+
    # Get user's Olares domain from namespace or config
    DOMAIN="{username}.olares.com"  # Extract from environment
-   
-   EXTERNAL_URL="https://${THIRD_LEVEL}.${DOMAIN}"
+
+   ACCESS_URL="https://${THIRD_LEVEL}.${DOMAIN}/${APP_NAME}/"
    ```
 
 7. **Report to User**
    ```
    ✅ Deployment successful!
-   
-   Your application is now live:
-   🌐 External URL: https://{app-id}-3000.{username}.olares.com/app-name/
-   
-   Alternative access:
-   • By port: https://{app-id}-3000.{username}.olares.com/8080/
-   • Internal: http://app-name-svc.namespace.svc.cluster.local:8080
-   
+
+   🌐 访问地址: https://{app-id}-3000.{username}.olares.com/app-name/
+
+   📁 代码目录: /root/workspace/app-name
+
    Manage your app:
    • View logs: olares-manage logs app-name
    • Check status: olares-manage info app-name
-   • List all apps: olares-urls
    ```
 
 ### External Access Configuration
@@ -833,12 +835,12 @@ olares-manage test <app-name>
 olares-manage delete <app-name>
 ```
 
-### Display All External URLs
+### Display All App URLs
 
 **Location:** `/root/.local/bin/olares-urls`
 
 ```bash
-# Show all deployed apps with external URLs
+# Show all deployed apps with URLs
 olares-urls
 ```
 
@@ -851,8 +853,8 @@ olares-urls
 ▶ my-app
   Status: ✅ Running (1/1)
   Port: 8080
-  External: https://{app-id}-3000.{username}.olares.com/my-app/
-  Internal: http://my-app-svc.namespace.svc.cluster.local:8080
+  访问地址: https://{app-id}-3000.{username}.olares.com/my-app/
+  代码目录: /root/workspace/my-app
 ```
 
 ### Network Architecture
@@ -925,7 +927,7 @@ Olares Nginx Configuration Generator
 ✅ Configuration complete!
 ```
 
-#### External Access URLs
+#### Access URLs
 
 After Nginx configuration, applications are accessible via:
 
@@ -1176,25 +1178,13 @@ Updating Nginx reverse proxy...
 ✓ Nginx configuration updated
 ✓ Generated reverse proxy config for todo-app
 
-Your todo app is now live at:
-🌐 https://{app-id}-3000.{username}.olares.com/todo-app/
+Your todo app is now live!
 
-Alternative access methods:
-• By port: https://{app-id}-3000.{username}.olares.com/8080/
-• Internal: http://todo-app-svc.namespace.svc.cluster.local:8080
+🌐 访问地址: https://{app-id}-3000.{username}.olares.com/todo-app/
+📁 代码目录: /root/workspace/todo-app
 
-The app is running in an isolated Pod with:
-- CPU: 100m-500m
-- Memory: 128Mi-512Mi
-- Auto-scaling: Ready (if needed)
-
-Access through unified entry point (port 3000) with path-based routing.
-
-You can view logs with:
-olares-manage logs todo-app
-
-Or manage it via:
-olares-manage info todo-app
+查看日志: olares-manage logs todo-app
+应用管理: olares-manage info todo-app
 ```
 
 ---
