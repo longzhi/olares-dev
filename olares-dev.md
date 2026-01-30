@@ -1243,6 +1243,97 @@ Each deployed app gets:
 |-------|-------|----------|
 | `Forbidden: cannot create deployments` | No RBAC | Request admin to apply RBAC config |
 | `ImagePullBackOff` | Image not found | Check image name and registry |
+| `connection refused localhost:5432` | App uses localhost DB | Pass DB_HOST, DB_USER etc. env vars (see below) |
+| Frontend shows "加载失败" | API path uses absolute `/api/` | Use relative path `api/` (see below) |
+
+### Frontend API Path (CRITICAL)
+
+**Problem:** When app is accessed via Nginx reverse proxy path (e.g., `/todo-app/`), frontend JavaScript using absolute API paths like `/api/todos` will fail.
+
+**Why it fails:**
+- User accesses: `https://domain/todo-app/`
+- Frontend requests: `https://domain/api/todos` (absolute path)
+- Should request: `https://domain/todo-app/api/todos`
+
+**Solution:** Use relative paths in frontend JavaScript:
+
+```javascript
+// WRONG: Absolute path - will break with reverse proxy
+fetch('/api/todos')
+fetch(`/api/todos/${id}`)
+
+// CORRECT: Relative path - works with any base path
+fetch('api/todos')
+fetch(`api/todos/${id}`)
+```
+
+**Example fix for common frameworks:**
+
+```javascript
+// Vanilla JS / React / Vue
+const res = await fetch('api/todos');  // No leading slash
+
+// Axios - set baseURL to empty or relative
+axios.defaults.baseURL = '';
+axios.get('api/todos');
+
+// Angular HttpClient - use relative URL
+this.http.get('api/todos');
+```
+
+### Database Environment Variables (CRITICAL)
+
+**Problem:** Apps deployed via `olares-deploy` don't automatically receive database credentials. The app tries to connect to `localhost:5432` which doesn't exist in the container.
+
+**Solution:** Pass Olares database environment variables in Deployment:
+
+```yaml
+# In deployment.yaml
+env:
+  - name: DB_HOST
+    value: "citus-master-svc.user-system-{username}"
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_USER
+    value: "mymas_user"
+  - name: DB_PASSWORD
+    value: "MyMAS2024Pass"
+  - name: DB_DATABASE
+    value: "mymas_db"
+```
+
+**Application code should build connection from env vars:**
+
+```python
+# Python example
+import os
+
+def get_database_url():
+    if os.environ.get('DATABASE_URL'):
+        return os.environ['DATABASE_URL']
+    
+    # Build from individual variables (Olares standard)
+    host = os.environ.get('DB_HOST', 'localhost')
+    port = os.environ.get('DB_PORT', '5432')
+    user = os.environ.get('DB_USER', 'postgres')
+    password = os.environ.get('DB_PASSWORD', 'postgres')
+    database = os.environ.get('DB_DATABASE', 'mydb')
+    
+    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
+DATABASE_URL = get_database_url()
+```
+
+```javascript
+// Node.js example
+const dbConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 5432,
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
+  database: process.env.DB_DATABASE || 'mydb'
+};
+```
 | `CrashLoopBackOff` | App crashes on start | Check logs for errors |
 | `admission webhook denied` | Missing annotations | Use deployment script with proper annotations |
 
