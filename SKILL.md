@@ -1,3 +1,9 @@
+---
+name: olares-dev
+description: Olares application development and deployment skill. Develop apps in /root/workspace/, use PostgreSQL automatically, and deploy to Olares with one-command publish.
+license: MIT
+---
+
 # Olares Application Development Skill
 
 ## ⚠️ CRITICAL RULES - READ FIRST
