@@ -1,7 +1,13 @@
 #!/bin/bash
 KUBECTL="/tmp/kubectl"
-NAMESPACE="opencode-dev-onetest02"
-DOMAIN="onetest02.olares.com"
+NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || echo "default")
+OWNER="${OLARES_USER:-$(echo $NAMESPACE | sed 's/.*-//')}"
+
+# AppID = md5(app_name)[:8] + entrance_index (0 for first entrance)
+OPENCODE_APP=$(echo $NAMESPACE | cut -d'-' -f1)
+OPENCODE_APPID="$(echo -n "$OPENCODE_APP" | md5sum | cut -c1-8)0"
+
+DOMAIN="${OWNER}.olares.com"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -21,9 +27,6 @@ if [ -z "$APPS" ]; then
 fi
 
 for APP in $APPS; do
-    # 获取第三级域名
-    THIRD_LEVEL=$($KUBECTL get deployment "$APP" -n "$NAMESPACE" -o jsonpath='{.metadata.annotations.applications\.app\.bytetrade\.io/default-thirdlevel-domains}' 2>/dev/null | python3 -c "import sys,json; data=json.load(sys.stdin); print(data[0]['thirdLevelDomain'])" 2>/dev/null)
-    
     # 获取端口
     PORT=$($KUBECTL get deployment "$APP" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].ports[0].containerPort}' 2>/dev/null)
     
@@ -39,13 +42,9 @@ for APP in $APPS; do
         echo -e "  状态: ${YELLOW}⚠️  $READY/$TOTAL${NC}"
     fi
     
-    if [ -n "$THIRD_LEVEL" ]; then
-        echo "  端口: $PORT"
-        echo -e "  访问地址: ${GREEN}https://${THIRD_LEVEL}.${DOMAIN}/${APP}/${NC}"
-        echo "  代码目录: /root/workspace/${APP}"
-    else
-        echo -e "  ${YELLOW}⚠️  未配置访问地址（使用旧版脚本部署）${NC}"
-    fi
+    echo "  端口: $PORT"
+    echo -e "  访问地址: ${GREEN}https://${OPENCODE_APPID}.${DOMAIN}/${APP}/${NC}"
+    echo "  代码目录: /root/workspace/${APP}"
     
     echo ""
 done
@@ -53,6 +52,7 @@ done
 echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
 echo ""
 echo "💡 提示："
-echo "  • 浏览器访问可能需要 1-2 分钟等待路由配置生效"
-echo "  • 使用 /tmp/opencode-deploy-v2.sh 部署新应用会自动配置外部访问"
+echo "  • 所有应用通过 OpenCode 的 Nginx 反向代理访问"
+echo "  • OpenCode AppID: ${OPENCODE_APPID}"
+echo "  • 基础 URL: https://${OPENCODE_APPID}.${DOMAIN}/"
 echo ""

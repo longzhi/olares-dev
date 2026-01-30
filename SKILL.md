@@ -869,22 +869,30 @@ olares-deploy my-app python:3.11-slim 8080 "pip install flask && python app.py"
 
 6. **Extract Access URL**
    ```bash
-   # Get the third-level domain from deployment
-   THIRD_LEVEL=$(kubectl get deployment "$APP_NAME" -n "$NAMESPACE" \
-       -o jsonpath='{.metadata.annotations.applications\.app\.bytetrade\.io/default-thirdlevel-domains}' \
-       | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['thirdLevelDomain'])")
-
-   # Get user's Olares domain from namespace or config
-   DOMAIN="{username}.olares.com"  # Extract from environment
-
-   ACCESS_URL="https://${THIRD_LEVEL}.${DOMAIN}/${APP_NAME}/"
+   # AppID Generation Rule:
+   # AppID = md5(app_name)[:8] + entrance_index
+   # - OpenCode entrance is the first one (index 0)
+   
+   # Get OpenCode app name from namespace (format: {app-name}-{username})
+   NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+   OPENCODE_APP=$(echo $NAMESPACE | cut -d'-' -f1)
+   
+   # Calculate OpenCode AppID
+   OPENCODE_HASH=$(echo -n "$OPENCODE_APP" | md5sum | cut -c1-8)
+   OPENCODE_APPID="${OPENCODE_HASH}0"  # First entrance (index 0)
+   
+   # Get username from environment
+   USERNAME="${OLARES_USER}"
+   
+   # Build access URL (apps are accessed via OpenCode's Nginx reverse proxy)
+   ACCESS_URL="https://${OPENCODE_APPID}.${USERNAME}.olares.com/${APP_NAME}/"
    ```
 
 7. **Report to User**
    ```
    ✅ Deployment successful!
 
-   🌐 访问地址: https://{app-id}-3000.{username}.olares.com/app-name/
+   🌐 访问地址: https://8cf849020.{username}.olares.com/app-name/
 
    📁 代码目录: /root/workspace/app-name
 
@@ -895,14 +903,27 @@ olares-deploy my-app python:3.11-slim 8080 "pip install flask && python app.py"
 
 ### External Access Configuration
 
+**Olares AppID Format:**
+```
+AppID = md5(app_name)[:8] + entrance_index
+
+For OpenCode (mymas):
+- md5("mymas")[:8] = "8cf84902"
+- First entrance (index 0) → AppID: 8cf849020
+- Second entrance (index 1) → AppID: 8cf849021
+```
+
 **Olares URL Format:**
 ```
-https://{appid}-{port}.{username}.olares.com/{path}
+https://{appid}.{username}.olares.com/{path}
 
 Example:
-https://{app-id}-3000.{username}.olares.com/my-app/
-         ↑          ↑      ↑            ↑
-      app id     port   username    app path
+https://8cf849020.onetest02.olares.com/my-app/
+        ↑          ↑                   ↑
+     appid      username           app path
+
+Note: All deployed apps are accessed via OpenCode's Nginx reverse proxy (port 3000),
+so they share the same AppID (8cf849020 for the first entrance).
 ```
 
 **Required Annotations** (automatically added by script):
@@ -911,7 +932,6 @@ annotations:
   meta.helm.sh/release-name: app-name
   meta.helm.sh/release-namespace: namespace
   applications.app.bytetrade.io/entrances: '[{"name":"app-name","host":"app-name-svc","port":8080,"title":"app-name","authLevel":"private","openMethod":"default"}]'
-  applications.app.bytetrade.io/default-thirdlevel-domains: '[{"appName":"app-name","entranceName":"app-name","thirdLevelDomain":"random-hash-port"}]'
   applications.app.bytetrade.io/icon: https://app.cdn.olares.com/appstore/default/defaulticon.webp
   applications.app.bytetrade.io/title: app-name
 ```
@@ -956,7 +976,7 @@ olares-urls
 ▶ my-app
   Status: ✅ Running (1/1)
   Port: 8080
-  访问地址: https://{app-id}-3000.{username}.olares.com/my-app/
+  访问地址: https://8cf849020.{username}.olares.com/my-app/
   代码目录: /root/workspace/my-app
 ```
 
@@ -966,7 +986,7 @@ olares-urls
 ```
 User Browser
     ↓ HTTPS
-https://{app-id}-3000.{username}.olares.com/{app-name}/
+https://8cf849020.{username}.olares.com/{app-name}/
     ↓ DNS Resolution
 Olares Ingress Controller (TLS termination)
     ↓ HTTP
@@ -1036,26 +1056,26 @@ After Nginx configuration, applications are accessible via:
 
 **Pattern 1: Application Name Path (Recommended)**
 ```
-https://{hash}-3000.{domain}/{app-name}/
+https://{opencode-appid}.{username}.olares.com/{app-name}/
 
 Example:
-https://{app-id}-3000.{username}.olares.com/my-app/
+https://8cf849020.onetest02.olares.com/my-app/
 ```
 
 **Pattern 2: Port Number Path**
 ```
-https://{hash}-3000.{domain}/{port}/
+https://{opencode-appid}.{username}.olares.com/{port}/
 
 Example:
-https://{app-id}-3000.{username}.olares.com/8080/  → my-app
+https://8cf849020.onetest02.olares.com/8080/  → my-app
 ```
 
 **Fixed: OpenCode Server Mode**
 ```
-https://{hash}-3000.{domain}/  → localhost:4096
+https://{opencode-appid}.{username}.olares.com/  → localhost:4096
 
 Example:
-https://{app-id}-3000.{username}.olares.com/
+https://8cf849020.onetest02.olares.com/
 ```
 
 #### Nginx Configuration Details
@@ -1136,7 +1156,7 @@ location / {
 python3 /root/.local/bin/olares-nginx-config
 
 # Step 3: Access application
-# https://{app-id}-3000.{username}.olares.com/my-app/
+# https://8cf849020.{username}.olares.com/my-app/
 ```
 
 **Automated Integration:**

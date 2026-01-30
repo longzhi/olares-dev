@@ -8,7 +8,8 @@ import subprocess
 import json
 import re
 import os
-from typing import Dict, Optional, Tuple
+import hashlib
+from typing import Dict, Optional, Tuple, Any
 from pathlib import Path
 
 
@@ -21,7 +22,9 @@ class OlaresDeployer:
         self.manage_script = "/root/.local/bin/olares-manage"
         self.urls_script = "/root/.local/bin/olares-urls"
         self.namespace = self._get_namespace()
-        self.domain = self._get_domain()
+        self.username = self._get_username()
+        self.domain = f"{self.username}.olares.com"
+        self.opencode_appid = self._get_opencode_appid()
         
         self._ensure_environment()
     
@@ -32,9 +35,23 @@ class OlaresDeployer:
                 return f.read().strip()
         return "default"
     
-    def _get_domain(self) -> str:
-        username = self.namespace.split("-")[-1] if "-" in self.namespace else "unknown"
-        return f"{username}.olares.com"
+    def _get_username(self) -> str:
+        """Get username from OLARES_USER env or extract from namespace"""
+        username = os.environ.get("OLARES_USER")
+        if username:
+            return username
+        # Fallback: extract from namespace (format: {app-name}-{username})
+        if "-" in self.namespace:
+            return self.namespace.split("-")[-1]
+        return "unknown"
+    
+    def _get_opencode_appid(self) -> str:
+        """
+        Calculate OpenCode AppID: md5(app_name)[:8] + entrance_index
+        """
+        opencode_app = self.namespace.split("-")[0] if "-" in self.namespace else "mymas"
+        hash_value = hashlib.md5(opencode_app.encode()).hexdigest()[:8]
+        return f"{hash_value}0"
     
     def _ensure_environment(self):
         init_script = "/root/.local/bin/olares-init"
@@ -53,7 +70,7 @@ class OlaresDeployer:
         name = name.strip('-')
         return name[:50]
     
-    def detect_framework(self, project_path: str) -> Dict[str, any]:
+    def detect_framework(self, project_path: str) -> Dict[str, Any]:
         """Auto-detect application framework and configuration"""
         path = Path(project_path)
         
@@ -151,8 +168,7 @@ class OlaresDeployer:
                 "app_name": app_name
             }
         
-        third_level_domain = self._get_third_level_domain(app_name)
-        external_url = f"https://{third_level_domain}.{self.domain}" if third_level_domain else None
+        external_url = f"https://{self.opencode_appid}.{self.domain}/{app_name}/"
         
         return {
             "success": True,
@@ -161,25 +177,8 @@ class OlaresDeployer:
             "port": port,
             "external_url": external_url,
             "internal_url": f"http://{app_name}-svc.{self.namespace}.svc.cluster.local:{port}",
-            "third_level_domain": third_level_domain
+            "opencode_appid": self.opencode_appid
         }
-    
-    def _get_third_level_domain(self, app_name: str) -> Optional[str]:
-        cmd = [
-            self.kubectl, "get", "deployment", app_name,
-            "-n", self.namespace,
-            "-o", "jsonpath={.metadata.annotations.applications\\.app\\.bytetrade\\.io/default-thirdlevel-domains}"
-        ]
-        
-        returncode, stdout, stderr = self._run_command(cmd, check=False)
-        if returncode != 0 or not stdout:
-            return None
-        
-        try:
-            data = json.loads(stdout)
-            return data[0]["thirdLevelDomain"]
-        except:
-            return None
     
     def get_app_info(self, app_name: str) -> Dict:
         """Get information about a deployed app"""
@@ -191,8 +190,7 @@ class OlaresDeployer:
         if returncode != 0:
             return {"success": False, "error": "App not found"}
         
-        third_level_domain = self._get_third_level_domain(app_name)
-        external_url = f"https://{third_level_domain}.{self.domain}" if third_level_domain else None
+        external_url = f"https://{self.opencode_appid}.{self.domain}/{app_name}/"
         
         return {
             "success": True,

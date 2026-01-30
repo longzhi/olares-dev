@@ -65,11 +65,14 @@ else
     CONTAINER_COMMAND=''
 fi
 
-RANDOM_SUFFIX=$(echo $RANDOM | md5sum | head -c 8)
-THIRD_LEVEL_DOMAIN="${RANDOM_SUFFIX}-${PORT}"
+# Calculate OpenCode AppID for access URL
+# AppID = md5(app_name)[:8] + entrance_index
+# OpenCode app name is extracted from namespace (format: {app-name}-{username})
+OPENCODE_APP=$(echo $NAMESPACE | cut -d'-' -f1)
+OPENCODE_HASH=$(echo -n "$OPENCODE_APP" | md5sum | cut -c1-8)
+OPENCODE_APPID="${OPENCODE_HASH}0"  # First entrance (index 0)
 
 ENTRANCES_JSON="[{\"name\":\"${APP_NAME}\",\"host\":\"${APP_NAME}-svc\",\"port\":${PORT},\"title\":\"${APP_NAME}\",\"authLevel\":\"private\",\"openMethod\":\"default\"}]"
-DOMAINS_JSON="[{\"appName\":\"${APP_NAME}\",\"entranceName\":\"${APP_NAME}\",\"thirdLevelDomain\":\"${THIRD_LEVEL_DOMAIN}\"}]"
 
 cat > "$MANIFEST_FILE" <<EOF
 apiVersion: apps/v1
@@ -86,7 +89,6 @@ metadata:
     meta.helm.sh/release-name: ${APP_NAME}
     meta.helm.sh/release-namespace: ${NAMESPACE}
     applications.app.bytetrade.io/entrances: '${ENTRANCES_JSON}'
-    applications.app.bytetrade.io/default-thirdlevel-domains: '${DOMAINS_JSON}'
     applications.app.bytetrade.io/icon: https://app.cdn.olares.com/appstore/default/defaulticon.webp
     applications.app.bytetrade.io/title: ${APP_NAME}
 spec:
@@ -201,16 +203,8 @@ echo ""
 
 log_info "应用已部署完成！"
 
-# NOTE: VSCODE_PROXY_URI contains code-server domain (port 8080), NOT Nginx domain (port 3000)!
-# The correct domain is the one user uses to access OpenCode UI.
-# We cannot reliably detect it automatically, so provide a template.
-
 echo ""
-echo "  🌐 访问地址: https://{你的OpenCode域名}.${OWNER}.olares.com/${APP_NAME}/"
-echo ""
-echo "  💡 提示: 将 {你的OpenCode域名} 替换为你访问 OpenCode 时的域名前缀"
-echo "     例如: 如果你通过 https://8cf849020.onetest02.olares.com/ 访问 OpenCode"
-echo "     则应用地址为: https://8cf849020.${OWNER}.olares.com/${APP_NAME}/"
+echo "  🌐 访问地址: https://${OPENCODE_APPID}.${OWNER}.olares.com/${APP_NAME}/"
 echo ""
 echo "  📁 代码目录: /root/workspace/${APP_NAME}"
 echo ""
