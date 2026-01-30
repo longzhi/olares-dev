@@ -20,14 +20,14 @@ license: MIT
 
 **Example - Correct behavior:**
 ```
-User: "帮我做一个投票应用"
+User: "Build me a voting app"
 AI: (Immediately creates /root/workspace/voting-app/ and starts coding)
 ```
 
 **Example - WRONG behavior:**
 ```
-User: "帮我做一个投票应用"  
-AI: "项目放在哪个目录？"  ← NEVER DO THIS
+User: "Build me a voting app"  
+AI: "Where do you want the project?"  ← NEVER DO THIS
 ```
 
 ---
@@ -43,25 +43,25 @@ When developing ANY application that needs data persistence:
 | ✅ Assume PostgreSQL is available | ❌ Ask about database preferences |
 | ✅ Write code using psycopg2/pg/SQLAlchemy | ❌ Offer database choices |
 
-**EXCEPTION:** If user **explicitly** requests SQLite (e.g., "用SQLite", "use SQLite"), then use SQLite. Otherwise, ALWAYS default to PostgreSQL.
+**EXCEPTION:** If user **explicitly** requests SQLite (e.g., "use SQLite"), then use SQLite. Otherwise, ALWAYS default to PostgreSQL.
 
 **WHY:** Olares injects PostgreSQL connection via environment variables. It's always available. No setup needed. PostgreSQL is production-ready; SQLite is only for user-requested simple cases.
 
 **Example - Correct behavior:**
 ```
-User: "帮我做一个投票应用"
+User: "Build me a voting app"
 AI: (Immediately starts coding with PostgreSQL, NO questions about database)
 
-User: "帮我做一个简单的笔记应用，用SQLite就行"
+User: "Build me a simple notes app, just use SQLite"
 AI: (Uses SQLite as explicitly requested)
 ```
 
 **Example - WRONG behavior:**
 ```
-User: "帮我做一个投票应用"  
-AI: "你想用什么数据库？PostgreSQL? MySQL? SQLite?"  ← NEVER DO THIS
+User: "Build me a voting app"  
+AI: "Which database do you want? PostgreSQL? MySQL? SQLite?"  ← NEVER DO THIS
 
-User: "帮我做一个投票应用"
+User: "Build me a voting app"
 AI: (Uses SQLite because it's "simpler")  ← WRONG: Should use PostgreSQL by default
 ```
 
@@ -118,11 +118,11 @@ After completing ANY development task (when code is written and working), you MU
 
 ```
 ---
-## ✅ 开发完成！
+## ✅ Development Complete!
 
-📁 项目位置: `/root/workspace/<app-name>/`
+📁 Project Location: `/root/workspace/<app-name>/`
 
-**是否发布到 Olares？** 回复 "发布" 即可一键部署上线。
+**Publish to Olares?** Reply "publish" to deploy with one click.
 ```
 
 **WHY THIS IS CRITICAL:**
@@ -135,28 +135,28 @@ After completing ANY development task (when code is written and working), you MU
 ```
 [... development code ...]
 
-测试结果：所有功能正常。
+Test result: All features working.
 
 ---
-## ✅ 开发完成！
+## ✅ Development Complete!
 
-📁 项目位置: `/root/workspace/todo-app/`
+📁 Project Location: `/root/workspace/todo-app/`
 
-**是否发布到 Olares？** 回复 "发布" 即可一键部署上线。
+**Publish to Olares?** Reply "publish" to deploy with one click.
 ```
 
 **Example - WRONG response ending (NEVER DO THIS):**
 ```
 [... development code ...]
 
-开发完成！如果有问题请告诉我。  ← WRONG: Missing publish prompt
+Development complete! Let me know if you have questions.  ← WRONG: Missing publish prompt
 ```
 
 ### Publish Triggers (AUTO-EXECUTE)
 
 **Trigger Keywords (User confirms publish):**
-- Publish: "发布" / "publish" / "好" / "可以" / "OK" / "yes" / "确认" / "同意" / "go" / "上线" / "打包" / "package" / "release"
-- Continue: "然后呢" / "next" / "继续" / "下一步" / "接下来"
+- Publish: "发布" / "publish" / "好" / "可以" / "OK" / "yes" / "确认" / "go" / "上线" / "deploy" / "ship it" / "release"
+- Continue: "然后呢" / "next" / "继续" / "下一步" / "what's next"
 
 **CRITICAL: When user says ANY of these after development, IMMEDIATELY execute publish to Olares. NO further confirmation needed.**
 
@@ -181,7 +181,7 @@ echo "🌐 Your app is live at: https://xxx-3000.xxx.olares.com/$APP_NAME/"
 ### Database Triggers (AUTO-INTEGRATE)
 
 **When to Trigger:**
-- User mentions: "数据库" / "database" / "DB" / "存储数据" / "保存数据" / "save data"
+- User mentions: "数据库" / "database" / "DB" / "存储数据" / "保存数据" / "store data" / "save data" / "persist"
 - User mentions: "PostgreSQL" / "Postgres" / "MySQL" / "SQLite" / "MongoDB" / "Redis"
 - User's app requires: user accounts, todos, posts, items, orders, or any persistent data
 - Code contains: database connection strings, ORM setup, SQL queries
@@ -220,10 +220,10 @@ Olares is a self-hosted cloud operating system. Applications are deployed as Hel
 - **User Isolation**: Each user gets isolated app instances
 
 **DEVELOPMENT DIRECTORY:**
-- **所有应用代码都在 `/root/workspace` 目录下创建**
-- 每个应用一个子目录：`/root/workspace/<app-name>/`
-- 部署时自动挂载到容器的 `/app` 目录
-- 代码修改后容器内立即生效（无需重新部署）
+- **All application code is created in `/root/workspace` directory**
+- One subdirectory per app: `/root/workspace/<app-name>/`
+- Automatically mounted to container's `/app` directory on deployment
+- Code changes take effect immediately in container (no redeployment needed)
 
 **DEPLOYMENT METHOD:**
 - **Olares Publish** - Direct deployment to Olares production environment via olares-deploy command
@@ -885,9 +885,9 @@ olares-deploy my-app python:3.11-slim 8080 "pip install flask && python app.py"
    ```
    ✅ Deployment successful!
 
-   🌐 访问地址: https://8cf849020.{username}.olares.com/app-name/
+   🌐 Access URL: https://8cf849020.{username}.olares.com/app-name/
 
-   📁 代码目录: /root/workspace/app-name
+   📁 Code Directory: /root/workspace/app-name
 
    Manage your app:
    • View logs: olares-manage logs app-name
@@ -969,8 +969,8 @@ olares-urls
 ▶ my-app
   Status: ✅ Running (1/1)
   Port: 8080
-  访问地址: https://8cf849020.{username}.olares.com/my-app/
-  代码目录: /root/workspace/my-app
+  Access URL: https://8cf849020.{username}.olares.com/my-app/
+  Code Directory: /root/workspace/my-app
 ```
 
 ### Network Architecture
@@ -1327,7 +1327,7 @@ Each deployed app gets:
 | `admission webhook denied` | Missing annotations | Use deployment script with proper annotations |
 | App accessible internally but not externally | Default entrance port is 4096, not 3000 | Patch deployment to use port 3000 (see below) |
 | `No such file or directory` in Pod | hostPath volume can't access OpenCode files | Use ConfigMap for code deployment |
-| Frontend shows "加载失败" | API path mismatch with deployment path | Configure frontend baseURL correctly (see below) |
+| Frontend shows "Load Failed" | API path mismatch with deployment path | Configure frontend baseURL correctly (see below) |
 
 ### Frontend API Path Configuration (CRITICAL)
 
@@ -1507,11 +1507,11 @@ Updating Nginx reverse proxy...
 
 Your todo app is now live!
 
-🌐 访问地址: https://{app-id}-3000.{username}.olares.com/todo-app/
-📁 代码目录: /root/workspace/todo-app
+🌐 Access URL: https://{app-id}-3000.{username}.olares.com/todo-app/
+📁 Code Directory: /root/workspace/todo-app
 
-查看日志: olares-manage logs todo-app
-应用管理: olares-manage info todo-app
+View logs: olares-manage logs todo-app
+Manage app: olares-manage info todo-app
 ```
 
 ---
