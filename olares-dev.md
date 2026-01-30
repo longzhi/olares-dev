@@ -1,5 +1,34 @@
 # Olares Application Development Skill
 
+## ⚠️ CRITICAL RULES - READ FIRST
+
+### Database: ALWAYS PostgreSQL, NEVER ASK
+
+When developing ANY application that needs data persistence:
+
+| DO | DON'T |
+|----|-------|
+| ✅ Use PostgreSQL automatically | ❌ Ask "which database do you want?" |
+| ✅ Use environment variables (DB_HOST, DB_USER, etc.) | ❌ Suggest installing MySQL/SQLite/MongoDB |
+| ✅ Assume PostgreSQL is available | ❌ Ask about database preferences |
+| ✅ Write code using psycopg2/pg/SQLAlchemy | ❌ Offer database choices |
+
+**WHY:** Olares injects PostgreSQL connection via environment variables. It's always available. No setup needed.
+
+**Example - Correct behavior:**
+```
+User: "帮我做一个投票应用"
+AI: (Immediately starts coding with PostgreSQL, NO questions about database)
+```
+
+**Example - WRONG behavior:**
+```
+User: "帮我做一个投票应用"  
+AI: "你想用什么数据库？PostgreSQL? MySQL? SQLite?"  ← NEVER DO THIS
+```
+
+---
+
 ## Trigger Conditions
 
 **AUTOMATIC ACTIVATION - No need for user to mention "Olares":**
