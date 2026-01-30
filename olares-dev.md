@@ -1109,96 +1109,60 @@ nginx
 nginx -s reload
 ```
 
-**Issue: App configs in `/etc/nginx/conf.d/dev/` not loaded (CRITICAL)**
+**Issue: App route shows OpenCode instead of application**
 
-The default Nginx configuration only includes `*.conf` files in `/etc/nginx/conf.d/`, not subdirectories. The `dev/` directory configs won't be loaded automatically.
+**Symptom:** Accessing `https://xxx.olares.com/my-app/` shows OpenCode UI instead of the deployed application.
 
-**Symptoms:**
-- `curl http://localhost:3000/todo-app/` returns OpenCode page instead of your app
-- Nginx config test passes but routing doesn't work
+**Root Cause:** `olares-nginx-config` generates config files in `/etc/nginx/conf.d/dev/` subdirectory, but `nginx.conf` only includes `/etc/nginx/conf.d/*.conf` (not subdirectories). The app route configs are never loaded.
 
-**Solution:**
+**Diagnosis:**
 ```bash
-# Check if dev configs are included
+# Check if config file exists
+ls /etc/nginx/conf.d/dev/my-app.conf  # File exists but not loaded
+
+# Check what nginx.conf includes
+grep "include" /etc/nginx/nginx.conf
+# Shows: include /etc/nginx/conf.d/*.conf;  (no subdirectory)
+
+# Check default.conf - only has OpenCode route
 cat /etc/nginx/conf.d/default.conf
-
-# If missing include directive, add it:
-# Edit /etc/nginx/conf.d/default.conf to add this line BEFORE "location /":
-#   include /etc/nginx/conf.d/dev/*.conf;
-
-# Also remove duplicate location / in opencode-server.conf if exists
-rm -f /etc/nginx/conf.d/dev/opencode-server.conf
-
-# Reload Nginx
-kill -HUP $(pgrep -f "nginx: master" | head -1)
-
-# Verify
-curl http://localhost:3000/todo-app/ | head -5
+# Shows: location / { proxy_pass http://localhost:4096; }
 ```
 
-**Correct `/etc/nginx/conf.d/default.conf` structure:**
+**Solution:** Add an `include` directive in `/etc/nginx/conf.d/default.conf` to load configs from the `dev/` subdirectory:
+
 ```nginx
 server {
     listen 3000;
     server_name _;
     
-    # Include all app-specific location configs (MUST be before location /)
+    # Include all app routes (MUST be before location /)
     include /etc/nginx/conf.d/dev/*.conf;
     
-    # Default fallback to OpenCode Server (must be last)
+    # OpenCode Server default route (fallback)
     location / {
         proxy_pass http://localhost:4096;
-        # ... other proxy settings
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
 
-**Issue: Wrong external access URL (CRITICAL)**
-
-**Problem:** There are TWO different domain prefixes:
-- `VSCODE_PROXY_URI` contains the **code-server entrance** domain (port 8080)
-- OpenCode UI uses a **different domain** for the **Nginx entrance** (port 3000)
-
-**These are NOT the same!** Using `VSCODE_PROXY_URI` domain will result in 404.
-
-**Correct approach:** Ask user for the URL they use to access OpenCode, or extract from browser.
-
+Then reload nginx:
 ```bash
-# WRONG: Using VSCODE_PROXY_URI domain (this is for port 8080, not 3000!)
-echo $VSCODE_PROXY_URI | grep -oP '://\K[^.]+'
-# Output: 8cf849021 (code-server entrance - WRONG for Nginx!)
-
-# CORRECT: The OpenCode UI domain is DIFFERENT
-# User accesses OpenCode at: https://8cf849020.onetest02.olares.com/
-# So the correct app URL is: https://8cf849020.onetest02.olares.com/todo-app/
+kill -HUP $(pgrep -f "nginx: master" | head -1)
 ```
 
-**Key insight:**
-- `8cf849020` = mymas entrance (port 3000, Nginx) - USE THIS
-- `8cf849021` = mymas-code entrance (port 8080, VS Code Server) - NOT this
-
-**Correct URL format:**
-```
-https://{opencode-ui-domain}.{user}.olares.com/{app-name}/
-
-Example: https://8cf849020.onetest02.olares.com/todo-app/
-```
-
-**How to find the correct domain:**
-1. Ask user: "What URL do you use to access OpenCode?"
-2. Extract the domain prefix from that URL
-3. Append `/{app-name}/` to get the app URL
-
-**Quick way to get correct URL (if user provides OpenCode URL):**
-```bash
-# User provides their OpenCode URL
-OPENCODE_URL="https://8cf849020.onetest02.olares.com/"
-
-# Extract domain and build app URL
-DOMAIN=$(echo $OPENCODE_URL | grep -oP '://\K[^/]+')
-APP_NAME="todo-app"
-echo "https://${DOMAIN}/${APP_NAME}/"
-```
+**Why this solution:**
+- One-time fix: only need to modify `default.conf` once
+- Each app config stays in its own file (`/etc/nginx/conf.d/dev/app-name.conf`)
+- `olares-nginx-config` script works without modification
+- New app deployments work automatically after `nginx -s reload`
 
 #### Health Check Endpoint
 
@@ -1243,99 +1207,127 @@ Each deployed app gets:
 |-------|-------|----------|
 | `Forbidden: cannot create deployments` | No RBAC | Request admin to apply RBAC config |
 | `ImagePullBackOff` | Image not found | Check image name and registry |
-| `connection refused localhost:5432` | App uses localhost DB | Pass DB_HOST, DB_USER etc. env vars (see below) |
-| Frontend shows "加载失败" | API path uses absolute `/api/` | Use relative path `api/` (see below) |
-
-### Frontend API Path (CRITICAL)
-
-**Problem:** When app is accessed via Nginx reverse proxy path (e.g., `/todo-app/`), frontend JavaScript using absolute API paths like `/api/todos` will fail.
-
-**Why it fails:**
-- User accesses: `https://domain/todo-app/`
-- Frontend requests: `https://domain/api/todos` (absolute path)
-- Should request: `https://domain/todo-app/api/todos`
-
-**Solution:** Use relative paths in frontend JavaScript:
-
-```javascript
-// WRONG: Absolute path - will break with reverse proxy
-fetch('/api/todos')
-fetch(`/api/todos/${id}`)
-
-// CORRECT: Relative path - works with any base path
-fetch('api/todos')
-fetch(`api/todos/${id}`)
-```
-
-**Example fix for common frameworks:**
-
-```javascript
-// Vanilla JS / React / Vue
-const res = await fetch('api/todos');  // No leading slash
-
-// Axios - set baseURL to empty or relative
-axios.defaults.baseURL = '';
-axios.get('api/todos');
-
-// Angular HttpClient - use relative URL
-this.http.get('api/todos');
-```
-
-### Database Environment Variables (CRITICAL)
-
-**Problem:** Apps deployed via `olares-deploy` don't automatically receive database credentials. The app tries to connect to `localhost:5432` which doesn't exist in the container.
-
-**Solution:** Pass Olares database environment variables in Deployment:
-
-```yaml
-# In deployment.yaml
-env:
-  - name: DB_HOST
-    value: "citus-master-svc.user-system-{username}"
-  - name: DB_PORT
-    value: "5432"
-  - name: DB_USER
-    value: "mymas_user"
-  - name: DB_PASSWORD
-    value: "MyMAS2024Pass"
-  - name: DB_DATABASE
-    value: "mymas_db"
-```
-
-**Application code should build connection from env vars:**
-
-```python
-# Python example
-import os
-
-def get_database_url():
-    if os.environ.get('DATABASE_URL'):
-        return os.environ['DATABASE_URL']
-    
-    # Build from individual variables (Olares standard)
-    host = os.environ.get('DB_HOST', 'localhost')
-    port = os.environ.get('DB_PORT', '5432')
-    user = os.environ.get('DB_USER', 'postgres')
-    password = os.environ.get('DB_PASSWORD', 'postgres')
-    database = os.environ.get('DB_DATABASE', 'mydb')
-    
-    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
-
-DATABASE_URL = get_database_url()
-```
-
-```javascript
-// Node.js example
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_DATABASE || 'mydb'
-};
-```
 | `CrashLoopBackOff` | App crashes on start | Check logs for errors |
 | `admission webhook denied` | Missing annotations | Use deployment script with proper annotations |
+| App accessible internally but not externally | Default entrance port is 4096, not 3000 | Patch deployment to use port 3000 (see below) |
+| `No such file or directory` in Pod | hostPath volume can't access OpenCode files | Use ConfigMap for code deployment |
+
+### ⚠️ CRITICAL: First-Time Setup Requirements
+
+Before deploying applications, ensure these configurations are in place:
+
+#### 1. RBAC Permissions
+
+The ServiceAccount needs permissions to create deployments and services:
+
+```bash
+# Check current permissions
+/tmp/kubectl auth can-i create deployments -n $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+
+# If "no", request admin to apply RBAC:
+cat << 'EOF' | /tmp/kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devbox-deployer
+  namespace: <YOUR_NAMESPACE>
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devbox-deployer-binding
+  namespace: <YOUR_NAMESPACE>
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: <YOUR_NAMESPACE>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devbox-deployer
+EOF
+```
+
+#### 2. Entrance Port Configuration (CRITICAL!)
+
+**Problem:** OpenCode's default entrance is port 4096 (OpenCode Server). External traffic goes directly to port 4096, bypassing Nginx on port 3000. This causes deployed apps to be inaccessible externally even though internal routing works.
+
+**Solution:** Change the default entrance port from 4096 to 3000:
+
+```bash
+# Get OpenCode deployment name (usually "mymas" or similar)
+DEPLOY_NAME=$(/tmp/kubectl get deployment -n $NAMESPACE -l app=mymas -o jsonpath='{.items[0].metadata.name}')
+
+# Check current entrance configuration
+/tmp/kubectl get deployment $DEPLOY_NAME -n $NAMESPACE -o jsonpath='{.metadata.annotations.applications\.app\.bytetrade\.io/entrances}'
+
+# Patch to use port 3000 as default entrance
+/tmp/kubectl patch deployment $DEPLOY_NAME -n $NAMESPACE --type='json' -p='[
+  {"op": "replace", "path": "/metadata/annotations/applications.app.bytetrade.io~1entrances", "value": "[{\"name\":\"mymas\",\"host\":\"mymas-svc\",\"port\":3000,\"title\":\"OpenCode\",\"authLevel\":\"private\",\"openMethod\":\"default\"}]"}
+]'
+```
+
+**Traffic Flow After Fix:**
+```
+External Browser
+    ↓ HTTPS
+https://xxx.username.olares.com/
+    ↓
+Olares Ingress → Port 3000 (Nginx)
+    ↓ Path-based routing
+    ├─ /todo-app/  → todo-app-svc:8080
+    └─ /           → localhost:4096 (OpenCode Server)
+```
+
+#### 3. Code Deployment Method
+
+**Problem:** hostPath volumes mount from the **worker node's** filesystem, not from the OpenCode container. Since code exists only in OpenCode container, Pods on other nodes can't access it.
+
+**Solution:** Use ConfigMap to store application code:
+
+```bash
+# Create ConfigMap with code files
+/tmp/kubectl create configmap myapp-code -n $NAMESPACE \
+  --from-file=app.py=/root/workspace/myapp/app.py \
+  --from-file=index.html=/root/workspace/myapp/static/index.html
+
+# In deployment, mount ConfigMap and copy to working directory:
+# See deployment template below
+```
+
+**Deployment with ConfigMap:**
+```yaml
+spec:
+  containers:
+  - name: myapp
+    image: python:3.11-slim
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        mkdir -p /app/static
+        cp /code/app.py /app/app.py
+        cp /code/index.html /app/static/index.html
+        cd /app
+        pip install flask
+        python app.py
+    volumeMounts:
+    - name: code
+      mountPath: /code
+  volumes:
+  - name: code
+    configMap:
+      name: myapp-code
+```
 
 ### Example: Complete Automated Flow
 
@@ -2100,32 +2092,6 @@ options:
 ---
 
 ## Troubleshooting
-
-### API Timeout Issues (CRITICAL)
-
-**Problem**: API requests are cut off after exactly 15 seconds.
-
-**Cause**: Olares uses Envoy sidecar with a default 15-second timeout for all routes.
-
-**Solution**: Add `apiTimeout: 0` to `OlaresManifest.yaml`:
-
-```yaml
-options:
-  apiTimeout: 0  # Unlimited timeout (default is 15 seconds)
-  analytics:
-    enabled: false
-```
-
-**After modifying**:
-1. Bump version in both `Chart.yaml` and `OlaresManifest.yaml`
-2. Re-package: `helm package /path/to/chart`
-3. Upload and upgrade via Market
-
-**Verification**: Check ConfigMap `olares-sidecar-config-{appname}` in Control Hub → should show `timeout: 0s`
-
-See [docs/ENVOY_TIMEOUT.md](docs/ENVOY_TIMEOUT.md) for complete details.
-
----
 
 ### App Not Starting
 
