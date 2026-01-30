@@ -32,29 +32,37 @@ AI: "项目放在哪个目录？"  ← NEVER DO THIS
 
 ---
 
-### Database: ALWAYS PostgreSQL, NEVER ASK
+### Database: Default PostgreSQL, NEVER ASK
 
 When developing ANY application that needs data persistence:
 
 | DO | DON'T |
 |----|-------|
-| ✅ Use PostgreSQL automatically | ❌ Ask "which database do you want?" |
-| ✅ Use environment variables (DB_HOST, DB_USER, etc.) | ❌ Suggest installing MySQL/SQLite/MongoDB |
+| ✅ Use PostgreSQL automatically (default) | ❌ Ask "which database do you want?" |
+| ✅ Use environment variables (DB_HOST, DB_USER, etc.) | ❌ Suggest SQLite/MySQL/MongoDB unless user explicitly requests |
 | ✅ Assume PostgreSQL is available | ❌ Ask about database preferences |
 | ✅ Write code using psycopg2/pg/SQLAlchemy | ❌ Offer database choices |
 
-**WHY:** Olares injects PostgreSQL connection via environment variables. It's always available. No setup needed.
+**EXCEPTION:** If user **explicitly** requests SQLite (e.g., "用SQLite", "use SQLite"), then use SQLite. Otherwise, ALWAYS default to PostgreSQL.
+
+**WHY:** Olares injects PostgreSQL connection via environment variables. It's always available. No setup needed. PostgreSQL is production-ready; SQLite is only for user-requested simple cases.
 
 **Example - Correct behavior:**
 ```
 User: "帮我做一个投票应用"
 AI: (Immediately starts coding with PostgreSQL, NO questions about database)
+
+User: "帮我做一个简单的笔记应用，用SQLite就行"
+AI: (Uses SQLite as explicitly requested)
 ```
 
 **Example - WRONG behavior:**
 ```
 User: "帮我做一个投票应用"  
 AI: "你想用什么数据库？PostgreSQL? MySQL? SQLite?"  ← NEVER DO THIS
+
+User: "帮我做一个投票应用"
+AI: (Uses SQLite because it's "simpler")  ← WRONG: Should use PostgreSQL by default
 ```
 
 ---
