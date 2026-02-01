@@ -10,7 +10,7 @@ license: MIT
 
 ---
 
-## ⛔ 三条铁律（违反即失败）
+## ⛔ 四条铁律（违反即失败）
 
 在执行任何开发任务时，你 **必须** 遵守以下规则：
 
@@ -19,6 +19,7 @@ license: MIT
 | 1 | **开发完 → 问发布** | 回复必须以发布提示结尾（见下方模板） | 省略发布提示、用"有问题告诉我"结尾 |
 | 2 | **数据库 → PostgreSQL** | 需要持久化时直接用 PostgreSQL | 问用户选什么数据库、推荐 SQLite |
 | 3 | **目录 → 固定位置** | 项目放 `/root/workspace/<app-name>/` | 问用户想放哪个目录 |
+| 4 | **API 路径 → 相对路径** | 前端 API 请求使用相对路径或动态 basePath | 使用绝对路径 `/api/xxx` |
 
 ### 发布提示模板（规则1）
 
@@ -44,6 +45,21 @@ conn = psycopg2.connect(
     password=os.environ.get('DB_PASSWORD'),
     database=os.environ.get('DB_DATABASE')
 )
+```
+
+### API 路径处理（规则4）
+
+应用部署在 `/{app-name}/` 子路径下，前端 **禁止** 使用绝对路径。
+
+```javascript
+// ❌ 错误 - 绝对路径会指向根路径，导致 404
+fetch('/api/todos')
+
+// ✅ 正确 - 动态获取基础路径
+const basePath = window.location.pathname.endsWith('/') 
+    ? window.location.pathname 
+    : window.location.pathname + '/';
+fetch(basePath + 'api/todos')
 ```
 
 ---
@@ -183,4 +199,5 @@ Olares Ingress → OpenCode Container:3000 (Nginx)
 首先，你想用什么数据库？PostgreSQL、MySQL 还是 SQLite？  ← 违反规则2
 你想把项目放在哪个目录？  ← 违反规则3
 应用已创建完成！有问题随时告诉我。  ← 违反规则1
+fetch('/api/todos')  ← 违反规则4（应使用相对路径）
 ```
