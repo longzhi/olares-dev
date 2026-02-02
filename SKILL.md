@@ -135,6 +135,13 @@ User confirms → Execute deployment
 python3 /root/.local/bin/olares-nginx-config
 ```
 
+### Deployment Mechanism (ConfigMap)
+
+- Code is packaged into a Kubernetes ConfigMap (limit: **1MB**)
+- Works across all nodes (no hostPath dependency)
+- To update code after changes: **re-run the deploy command**
+- Keep app directory small: exclude `node_modules/`, `.git/`, `__pycache__/`, etc.
+
 ### Post-Deployment Response Template
 
 ```
@@ -183,6 +190,8 @@ Olares Ingress → OpenCode Container:3000 (Nginx)
 | 502 Bad Gateway | Pod not running | `/root/.local/bin/olares-manage logs <app-name>` |
 | 404 Not Found | Nginx not configured | `python3 /root/.local/bin/olares-nginx-config` |
 | Database connection failed | Env vars not set | Check OlaresManifest.yaml |
+| App directory too large | ConfigMap limit 1MB | Remove node_modules, .git, __pycache__ etc. |
+| Code changes not reflected | Need to redeploy | Re-run `/root/.local/bin/olares-deploy` to update ConfigMap |
 
 ---
 

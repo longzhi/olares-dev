@@ -124,6 +124,11 @@ function delete_app() {
         log_info "Service deleted" || \
         log_error "Service deletion failed or not found"
     
+    # Also delete ConfigMap (created by olares-deploy)
+    $KUBECTL delete configmap "${APP_NAME}-code" -n "$NAMESPACE" 2>/dev/null && \
+        log_info "ConfigMap deleted" || \
+        echo "  (No ConfigMap found, may be using older deployment method)"
+    
     echo ""
 }
 

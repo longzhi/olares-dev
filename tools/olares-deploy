@@ -55,6 +55,9 @@ if ! [[ "$APP_NAME" =~ ^[a-z0-9-]+$ ]]; then
     exit 1
 fi
 
+WORKSPACE_PATH="/root/workspace"
+APP_PATH="${WORKSPACE_PATH}/${APP_NAME}"
+
 log_step "Starting deployment"
 echo "  App name: $APP_NAME"
 echo "  Image: $IMAGE"
@@ -62,48 +65,81 @@ echo "  Port: $PORT"
 echo "  Namespace: $NAMESPACE"
 [ -n "$COMMAND" ] && echo "  Startup command: $COMMAND"
 
-MANIFEST_FILE="/tmp/${APP_NAME}-deployment.yaml"
-
-# Dynamically resolve workspace hostPath
-# In Olares environment, /root/workspace may be a symlink or mount point
-WORKSPACE_PATH="/root/workspace"
-if [ -L "$WORKSPACE_PATH" ]; then
-    # If symlink, get real path
-    HOST_WORKSPACE_PATH=$(readlink -f "$WORKSPACE_PATH")
-elif [ -d "$WORKSPACE_PATH" ]; then
-    # Try to get real path from mount info
-    MOUNT_INFO=$(df "$WORKSPACE_PATH" 2>/dev/null | tail -1 | awk '{print $NF}')
-    if [ "$MOUNT_INFO" != "/" ] && [ -n "$MOUNT_INFO" ]; then
-        HOST_WORKSPACE_PATH="$MOUNT_INFO"
-    else
-        # Fallback to default path
-        HOST_WORKSPACE_PATH="$WORKSPACE_PATH"
-    fi
-else
-    HOST_WORKSPACE_PATH="$WORKSPACE_PATH"
+# Check if app directory exists
+if [ ! -d "$APP_PATH" ]; then
+    log_error "App directory not found: $APP_PATH"
+    echo "  Please create your app in /root/workspace/${APP_NAME}/ first"
+    exit 1
 fi
 
-log_step "Generating Kubernetes manifest..."
-echo "  Workspace hostPath: $HOST_WORKSPACE_PATH"
+# Check directory size (ConfigMap limit is 1MB)
+log_step "Checking app directory size..."
+APP_SIZE=$(du -sb "$APP_PATH" 2>/dev/null | cut -f1)
+APP_SIZE_KB=$((APP_SIZE / 1024))
+APP_SIZE_MB=$((APP_SIZE / 1024 / 1024))
+
+echo "  App size: ${APP_SIZE_KB} KB"
+
+if [ "$APP_SIZE" -gt 1048576 ]; then
+    log_error "App directory too large: ${APP_SIZE_MB} MB (ConfigMap limit: 1MB)"
+    echo ""
+    echo "  Solutions:"
+    echo "  1. Remove unnecessary files (node_modules, __pycache__, .git, etc.)"
+    echo "  2. Use .dockerignore patterns to exclude files"
+    echo "  3. For large apps, consider building a Docker image instead"
+    exit 1
+fi
+
+# Create ConfigMap from app directory
+log_step "Creating ConfigMap from app code..."
+CONFIGMAP_NAME="${APP_NAME}-code"
+
+# Delete existing ConfigMap if exists
+$KUBECTL delete configmap "$CONFIGMAP_NAME" -n "$NAMESPACE" 2>/dev/null || true
+
+# Create ConfigMap with all files (excluding common unnecessary files)
+cd "$APP_PATH"
+if ! $KUBECTL create configmap "$CONFIGMAP_NAME" \
+    --from-file=. \
+    -n "$NAMESPACE" 2>&1; then
+    log_error "Failed to create ConfigMap"
+    echo "  This may be due to binary files or special characters in filenames"
+    echo "  Try removing binary files or use a Docker image instead"
+    exit 1
+fi
+
+log_info "ConfigMap created: $CONFIGMAP_NAME"
+
+MANIFEST_FILE="/tmp/${APP_NAME}-deployment.yaml"
 
 if [ -n "$COMMAND" ]; then
+    # Wrap command to first copy code from ConfigMap to working directory
+    INIT_AND_COMMAND="cp -r /code/* /app/ 2>/dev/null || true; cd /app; $COMMAND"
     CONTAINER_COMMAND='
         command: ["/bin/sh", "-c"]
         args:
           - |
-            '"$COMMAND"
+            '"$INIT_AND_COMMAND"
 else
-    CONTAINER_COMMAND=''
+    # Default: just copy code
+    CONTAINER_COMMAND='
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            cp -r /code/* /app/ 2>/dev/null || true
+            cd /app
+            echo "No startup command specified. Container will stay running."
+            tail -f /dev/null'
 fi
 
 # Calculate OpenCode AppID for access URL
-# AppID = md5(app_name)[:8] + entrance_index
-# OpenCode app name is extracted from namespace (format: {app-name}-{username})
 OPENCODE_APP=$(echo $NAMESPACE | cut -d'-' -f1)
 OPENCODE_HASH=$(echo -n "$OPENCODE_APP" | md5sum | cut -c1-8)
-OPENCODE_APPID="${OPENCODE_HASH}0"  # First entrance (index 0)
+OPENCODE_APPID="${OPENCODE_HASH}0"
 
 ENTRANCES_JSON="[{\"name\":\"${APP_NAME}\",\"host\":\"${APP_NAME}-svc\",\"port\":${PORT},\"title\":\"${APP_NAME}\",\"authLevel\":\"private\",\"openMethod\":\"default\"}]"
+
+log_step "Generating Kubernetes manifest..."
 
 cat > "$MANIFEST_FILE" <<EOF
 apiVersion: apps/v1
@@ -162,14 +198,17 @@ spec:
             cpu: "500m"
             memory: "512Mi"
         volumeMounts:
-        - name: workspace
+        - name: code
+          mountPath: /code
+          readOnly: true
+        - name: app-workdir
           mountPath: /app
-          subPath: ${APP_NAME}
       volumes:
-      - name: workspace
-        hostPath:
-          path: ${HOST_WORKSPACE_PATH}
-          type: DirectoryOrCreate
+      - name: code
+        configMap:
+          name: ${CONFIGMAP_NAME}
+      - name: app-workdir
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -238,7 +277,9 @@ echo ""
 echo "  🌐 Access URL: https://${OPENCODE_APPID}.${OWNER}.olares.com/${APP_NAME}/"
 echo ""
 echo "  📁 Code directory: /root/workspace/${APP_NAME}"
+echo "  📦 ConfigMap: ${CONFIGMAP_NAME}"
 echo ""
-echo "  View logs: olares-manage logs ${APP_NAME}"
-echo "  Delete app: olares-manage delete ${APP_NAME}"
+echo "  Update code: Re-run this deploy command after editing files"
+echo "  View logs: /root/.local/bin/olares-manage logs ${APP_NAME}"
+echo "  Delete app: /root/.local/bin/olares-manage delete ${APP_NAME}"
 echo ""
