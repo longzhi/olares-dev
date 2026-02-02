@@ -72,64 +72,85 @@ if [ ! -d "$APP_PATH" ]; then
     exit 1
 fi
 
-# Check directory size (ConfigMap limit is 1MB)
+# Check directory size (ConfigMap limit is 1MB for the encoded tarball)
 log_step "Checking app directory size..."
 APP_SIZE=$(du -sb "$APP_PATH" 2>/dev/null | cut -f1)
 APP_SIZE_KB=$((APP_SIZE / 1024))
-APP_SIZE_MB=$((APP_SIZE / 1024 / 1024))
 
 echo "  App size: ${APP_SIZE_KB} KB"
 
-if [ "$APP_SIZE" -gt 1048576 ]; then
-    log_error "App directory too large: ${APP_SIZE_MB} MB (ConfigMap limit: 1MB)"
+# Tar + base64 increases size ~33%, so limit to ~750KB raw
+if [ "$APP_SIZE" -gt 768000 ]; then
+    log_error "App directory too large: ${APP_SIZE_KB} KB (limit: ~750KB for ConfigMap)"
     echo ""
     echo "  Solutions:"
-    echo "  1. Remove unnecessary files (node_modules, __pycache__, .git, etc.)"
-    echo "  2. Use .dockerignore patterns to exclude files"
-    echo "  3. For large apps, consider building a Docker image instead"
+    echo "  1. Remove unnecessary files (node_modules, __pycache__, .git, venv, etc.)"
+    echo "  2. For large apps, consider building a Docker image instead"
     exit 1
 fi
 
-# Create ConfigMap from app directory
-log_step "Creating ConfigMap from app code..."
+# Create tarball of app code (preserves directory structure)
+log_step "Packaging app code..."
+TARBALL="/tmp/${APP_NAME}-code.tar.gz"
+cd "$APP_PATH"
+
+# Create tarball excluding common unnecessary files
+tar --exclude='__pycache__' \
+    --exclude='*.pyc' \
+    --exclude='.git' \
+    --exclude='node_modules' \
+    --exclude='.venv' \
+    --exclude='venv' \
+    --exclude='.env' \
+    --exclude='*.log' \
+    -czf "$TARBALL" .
+
+TARBALL_SIZE=$(stat -c%s "$TARBALL" 2>/dev/null || stat -f%z "$TARBALL")
+TARBALL_SIZE_KB=$((TARBALL_SIZE / 1024))
+echo "  Compressed size: ${TARBALL_SIZE_KB} KB"
+
+# Base64 encode the tarball
+TARBALL_B64=$(base64 -w0 "$TARBALL" 2>/dev/null || base64 "$TARBALL")
+
+# Check final size (ConfigMap limit is 1MB)
+B64_SIZE=${#TARBALL_B64}
+if [ "$B64_SIZE" -gt 1048576 ]; then
+    log_error "Encoded tarball too large: $((B64_SIZE / 1024)) KB (limit: 1MB)"
+    exit 1
+fi
+
+# Create ConfigMap with tarball
+log_step "Creating ConfigMap..."
 CONFIGMAP_NAME="${APP_NAME}-code"
 
 # Delete existing ConfigMap if exists
 $KUBECTL delete configmap "$CONFIGMAP_NAME" -n "$NAMESPACE" 2>/dev/null || true
 
-# Create ConfigMap with all files (excluding common unnecessary files)
-cd "$APP_PATH"
-if ! $KUBECTL create configmap "$CONFIGMAP_NAME" \
-    --from-file=. \
-    -n "$NAMESPACE" 2>&1; then
-    log_error "Failed to create ConfigMap"
-    echo "  This may be due to binary files or special characters in filenames"
-    echo "  Try removing binary files or use a Docker image instead"
-    exit 1
-fi
+# Create ConfigMap with the tarball
+cat <<EOF | $KUBECTL apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${CONFIGMAP_NAME}
+  namespace: ${NAMESPACE}
+data:
+  code.tar.gz.b64: |
+    ${TARBALL_B64}
+EOF
 
 log_info "ConfigMap created: $CONFIGMAP_NAME"
 
+# Clean up temp file
+rm -f "$TARBALL"
+
 MANIFEST_FILE="/tmp/${APP_NAME}-deployment.yaml"
 
+# Build the startup command that extracts code and runs the app
+EXTRACT_CMD="cd /app && echo \$CODE_TARBALL | base64 -d | tar -xzf - && "
 if [ -n "$COMMAND" ]; then
-    # Wrap command to first copy code from ConfigMap to working directory
-    INIT_AND_COMMAND="cp -r /code/* /app/ 2>/dev/null || true; cd /app; $COMMAND"
-    CONTAINER_COMMAND='
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            '"$INIT_AND_COMMAND"
+    FULL_COMMAND="${EXTRACT_CMD}${COMMAND}"
 else
-    # Default: just copy code
-    CONTAINER_COMMAND='
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            cp -r /code/* /app/ 2>/dev/null || true
-            cd /app
-            echo "No startup command specified. Container will stay running."
-            tail -f /dev/null'
+    FULL_COMMAND="${EXTRACT_CMD}echo 'No startup command specified. Container will stay running.' && tail -f /dev/null"
 fi
 
 # Calculate OpenCode AppID for access URL
@@ -173,12 +194,22 @@ spec:
     spec:
       containers:
       - name: ${APP_NAME}
-        image: ${IMAGE}${CONTAINER_COMMAND}
+        image: ${IMAGE}
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            ${FULL_COMMAND}
         workingDir: /app
         ports:
         - containerPort: ${PORT}
           name: http
         env:
+        # Code tarball (base64 encoded)
+        - name: CODE_TARBALL
+          valueFrom:
+            configMapKeyRef:
+              name: ${CONFIGMAP_NAME}
+              key: code.tar.gz.b64
         # Database configuration (auto-injected from Olares environment)
         - name: DB_HOST
           value: "${DB_HOST:-}"
@@ -198,15 +229,9 @@ spec:
             cpu: "500m"
             memory: "512Mi"
         volumeMounts:
-        - name: code
-          mountPath: /code
-          readOnly: true
         - name: app-workdir
           mountPath: /app
       volumes:
-      - name: code
-        configMap:
-          name: ${CONFIGMAP_NAME}
       - name: app-workdir
         emptyDir: {}
 ---
@@ -250,6 +275,8 @@ for i in {1..30}; do
     elif [ "$POD_STATUS" = "Failed" ] || [ "$POD_STATUS" = "Error" ]; then
         log_error "Pod failed to start"
         $KUBECTL get pods -n "$NAMESPACE" -l app="$APP_NAME"
+        echo ""
+        echo "Check logs with: /root/.local/bin/olares-manage logs ${APP_NAME}"
         exit 1
     fi
     
@@ -260,6 +287,7 @@ echo ""
 
 if [ "$POD_STATUS" != "Running" ]; then
     log_warning "Pod did not start within expected time, current status: $POD_STATUS"
+    echo "Check logs with: /root/.local/bin/olares-manage logs ${APP_NAME}"
 fi
 
 log_step "Deployment info:"
