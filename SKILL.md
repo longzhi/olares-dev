@@ -6,35 +6,35 @@ license: MIT
 
 # Olares Development Skill
 
-**在 Olares 平台上开发和部署应用的规范。**
+**Standards for developing and deploying applications on the Olares platform.**
 
 ---
 
-## ⛔ 四条铁律（违反即失败）
+## ⛔ Four Iron Rules (Violation = Failure)
 
-在执行任何开发任务时，你 **必须** 遵守以下规则：
+When executing any development task, you **MUST** follow these rules:
 
-| # | 规则 | 正确做法 | 违规行为（= 你失败了） |
-|---|------|----------|----------------------|
-| 1 | **开发完 → 问发布** | 回复必须以发布提示结尾（见下方模板） | 省略发布提示、用"有问题告诉我"结尾 |
-| 2 | **数据库 → PostgreSQL** | 需要持久化时直接用 PostgreSQL | 问用户选什么数据库、推荐 SQLite |
-| 3 | **目录 → 固定位置** | 项目放 `/root/workspace/<app-name>/` | 问用户想放哪个目录 |
-| 4 | **API 路径 → 相对路径** | 前端 API 请求使用相对路径或动态 basePath | 使用绝对路径 `/api/xxx` |
+| # | Rule | Correct Approach | Violation (= You Failed) |
+|---|------|------------------|--------------------------|
+| 1 | **After dev → Ask to publish** | Response must end with publish prompt (see template below) | Omit publish prompt, end with "let me know if you have questions" |
+| 2 | **Database → PostgreSQL** | Use PostgreSQL directly when persistence is needed | Ask user which database, recommend SQLite |
+| 3 | **Directory → Fixed location** | Put project in `/root/workspace/<app-name>/` | Ask user where to put the project |
+| 4 | **API paths → Relative paths** | Frontend API requests use relative paths or dynamic basePath | Use absolute paths like `/api/xxx` |
 
-### 发布提示模板（规则1）
+### Publish Prompt Template (Rule 1)
 
-开发完成后，你的回复 **必须** 以这个格式结尾：
+After development is complete, your response **MUST** end with this format:
 
 ```
 ---
-## ✅ 开发完成！
+## ✅ Development Complete!
 
-📁 项目位置：`/root/workspace/<app-name>/`
+📁 Project location: `/root/workspace/<app-name>/`
 
-**发布到 Olares？** 回复 "publish" 一键部署。
+**Deploy to Olares?** Reply "publish" for one-click deployment.
 ```
 
-### PostgreSQL 连接方式（规则2）
+### PostgreSQL Connection (Rule 2)
 
 ```python
 import os
@@ -47,15 +47,15 @@ conn = psycopg2.connect(
 )
 ```
 
-### API 路径处理（规则4）
+### API Path Handling (Rule 4)
 
-应用部署在 `/{app-name}/` 子路径下，前端 **禁止** 使用绝对路径。
+Apps are deployed at `/{app-name}/` subpath. Frontend **MUST NOT** use absolute paths.
 
 ```javascript
-// ❌ 错误 - 绝对路径会指向根路径，导致 404
+// ❌ Wrong - absolute path points to root, causing 404
 fetch('/api/todos')
 
-// ✅ 正确 - 动态获取基础路径
+// ✅ Correct - dynamically get base path
 const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
     : window.location.pathname + '/';
@@ -64,83 +64,83 @@ fetch(basePath + 'api/todos')
 
 ---
 
-## 🎯 触发词
+## 🎯 Trigger Keywords
 
-### 开发触发词（加载此 skill）
+### Development Triggers (loads this skill)
 
-- **中文**：制作 / 开发 / 创建 / 做一个 / 写一个 / 帮我做 / 帮我写 / 帮我开发 / 实现 / 编写
+- **Chinese**: 制作 / 开发 / 创建 / 做一个 / 写一个 / 帮我做 / 帮我写 / 帮我开发 / 实现 / 编写
 - **English**: build / create / make / develop / help me build / help me create / implement / code
 
-### 发布触发词（执行部署）
+### Publish Triggers (executes deployment)
 
-用户说以下词时，**立即执行部署**：
+When user says these, **immediately execute deployment**:
 - 发布 / publish / 好 / 可以 / OK / yes / 确认 / go / 上线 / deploy / ship it / release
 
 ---
 
-## 📐 开发工作流
+## 📐 Development Workflow
 
 ```
-用户请求开发
+User requests development
     ↓
-创建项目: /root/workspace/<app-name>/  ← 不要问目录
+Create project: /root/workspace/<app-name>/  ← Don't ask for directory
     ↓
-需要数据库？→ 直接用 PostgreSQL  ← 不要问选择
+Need database? → Use PostgreSQL directly  ← Don't ask for choice
     ↓
-编写完整可运行的代码
+Write complete runnable code
     ↓
-回复以发布提示结尾  ← 必须！
+End response with publish prompt  ← Required!
     ↓
-用户确认 → 执行部署
+User confirms → Execute deployment
 ```
 
 ---
 
-## 🚀 部署命令
+## 🚀 Deployment Commands
 
 ```bash
-# 格式
+# Format
 olares-deploy <app-name> <image> <port> [startup-command]
 
-# 示例
+# Example
 olares-deploy todo-app python:3.11-slim 8080 "pip install -r requirements.txt && python app.py"
 
-# 部署后必须更新 Nginx
+# Must update Nginx after deployment
 python3 /root/.local/bin/olares-nginx-config
 ```
 
-### 部署后回复模板
+### Post-Deployment Response Template
 
 ```
-✅ 部署成功！
+✅ Deployment successful!
 
-🌐 访问地址：https://8cf849020.{username}.olares.com/{app-name}/
-📁 代码目录：/root/workspace/{app-name}/
+🌐 Access URL: https://8cf849020.{username}.olares.com/{app-name}/
+📁 Code directory: /root/workspace/{app-name}/
 
-管理命令：
-• 查看日志：olares-manage logs {app-name}
-• 查看状态：olares-manage info {app-name}
-• 删除应用：olares-manage delete {app-name}
+Management commands:
+• View logs: olares-manage logs {app-name}
+• View status: olares-manage info {app-name}
+• Delete app: olares-manage delete {app-name}
 ```
 
 ---
 
-## 🛠️ 管理命令
+## 🛠️ Management Commands
 
 ```bash
-olares-manage list              # 列出所有应用
-olares-manage info <app-name>   # 查看应用详情
-olares-manage logs <app-name>   # 查看日志
-olares-manage delete <app-name> # 删除应用
-olares-urls                     # 显示所有 URL
+olares-manage list              # List all apps
+olares-manage info <app-name>   # Show app details
+olares-manage logs <app-name>   # View logs
+olares-manage delete <app-name> # Delete app
+olares-urls                     # Show all URLs
 ```
 
 ---
 
-## 🌐 网络架构
+## 🌐 Network Architecture
 
 ```
-用户浏览器 → https://8cf849020.{username}.olares.com/{app-name}/
+Browser → https://8cf849020.{username}.olares.com/{app-name}/
     ↓
 Olares Ingress → OpenCode Container:3000 (Nginx)
     ↓
@@ -150,54 +150,54 @@ Olares Ingress → OpenCode Container:3000 (Nginx)
 
 ---
 
-## 🔧 故障排查
+## 🔧 Troubleshooting
 
-| 问题 | 原因 | 解决方案 |
-|------|------|----------|
-| 502 Bad Gateway | Pod 未运行 | `olares-manage logs <app-name>` |
-| 404 Not Found | Nginx 未配置 | `python3 /root/.local/bin/olares-nginx-config` |
-| 数据库连接失败 | 环境变量未设置 | 检查 OlaresManifest.yaml |
-
----
-
-## 📚 参考文档
-
-| 文档 | 内容 |
-|------|------|
-| `docs/database-reference.md` | PostgreSQL 详细用法 |
-| `docs/deployment-reference.md` | 部署命令和网络架构 |
-| `docs/helm-reference.md` | Helm Chart 打包格式 |
-| `docs/github-submission.md` | Market 提交流程 |
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| 502 Bad Gateway | Pod not running | `olares-manage logs <app-name>` |
+| 404 Not Found | Nginx not configured | `python3 /root/.local/bin/olares-nginx-config` |
+| Database connection failed | Env vars not set | Check OlaresManifest.yaml |
 
 ---
 
-## ✅ 示例：正确的开发回复
+## 📚 Reference Documentation
 
-```
-好的，我来帮你创建一个待办事项应用。
-
-[创建 /root/workspace/todo-app/app.py]
-[创建 /root/workspace/todo-app/requirements.txt]
-[创建 /root/workspace/todo-app/static/index.html]
-
-应用已创建并测试通过：
-- 后端：Flask + PostgreSQL
-- 前端：简洁的 HTML/CSS/JS
-- API：GET/POST/DELETE /api/todos
+| Document | Content |
+|----------|---------|
+| `docs/database-reference.md` | PostgreSQL detailed usage |
+| `docs/deployment-reference.md` | Deployment commands and network architecture |
+| `docs/helm-reference.md` | Helm Chart packaging format |
+| `docs/github-submission.md` | Market submission process |
 
 ---
-## ✅ 开发完成！
 
-📁 项目位置：`/root/workspace/todo-app/`
-
-**发布到 Olares？** 回复 "publish" 一键部署。
-```
-
-## ❌ 示例：错误的开发回复
+## ✅ Example: Correct Development Response
 
 ```
-首先，你想用什么数据库？PostgreSQL、MySQL 还是 SQLite？  ← 违反规则2
-你想把项目放在哪个目录？  ← 违反规则3
-应用已创建完成！有问题随时告诉我。  ← 违反规则1
-fetch('/api/todos')  ← 违反规则4（应使用相对路径）
+Alright, I'll create a todo app for you.
+
+[Creating /root/workspace/todo-app/app.py]
+[Creating /root/workspace/todo-app/requirements.txt]
+[Creating /root/workspace/todo-app/static/index.html]
+
+App created and tested:
+- Backend: Flask + PostgreSQL
+- Frontend: Clean HTML/CSS/JS
+- API: GET/POST/DELETE /api/todos
+
+---
+## ✅ Development Complete!
+
+📁 Project location: `/root/workspace/todo-app/`
+
+**Deploy to Olares?** Reply "publish" for one-click deployment.
+```
+
+## ❌ Example: Wrong Development Response
+
+```
+First, which database would you like? PostgreSQL, MySQL, or SQLite?  ← Violates Rule 2
+Where would you like to put the project?  ← Violates Rule 3
+App created! Let me know if you have questions.  ← Violates Rule 1
+fetch('/api/todos')  ← Violates Rule 4 (should use relative path)
 ```

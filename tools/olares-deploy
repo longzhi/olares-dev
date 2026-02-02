@@ -2,7 +2,7 @@
 
 set -e
 
-# 动态检测 kubectl 路径
+# Auto-detect kubectl path
 if command -v kubectl &> /dev/null; then
     KUBECTL=$(command -v kubectl)
 elif [ -x "/usr/local/bin/kubectl" ]; then
@@ -10,7 +10,7 @@ elif [ -x "/usr/local/bin/kubectl" ]; then
 elif [ -x "/tmp/kubectl" ]; then
     KUBECTL="/tmp/kubectl"
 else
-    echo "错误：找不到 kubectl" >&2
+    echo "Error: kubectl not found" >&2
     exit 1
 fi
 
@@ -40,8 +40,8 @@ function log_step() {
 }
 
 if [ $# -lt 3 ]; then
-    log_error "参数不足"
-    echo "用法: $0 <app-name> <image> <port> [command]"
+    log_error "Insufficient arguments"
+    echo "Usage: $0 <app-name> <image> <port> [command]"
     exit 1
 fi
 
@@ -51,39 +51,39 @@ PORT="$3"
 COMMAND="${4:-}"
 
 if ! [[ "$APP_NAME" =~ ^[a-z0-9-]+$ ]]; then
-    log_error "应用名称无效：$APP_NAME（只能包含小写字母、数字和连字符）"
+    log_error "Invalid app name: $APP_NAME (only lowercase letters, numbers, and hyphens allowed)"
     exit 1
 fi
 
-log_step "开始部署应用"
-echo "  应用名称: $APP_NAME"
-echo "  镜像: $IMAGE"
-echo "  端口: $PORT"
+log_step "Starting deployment"
+echo "  App name: $APP_NAME"
+echo "  Image: $IMAGE"
+echo "  Port: $PORT"
 echo "  Namespace: $NAMESPACE"
-[ -n "$COMMAND" ] && echo "  启动命令: $COMMAND"
+[ -n "$COMMAND" ] && echo "  Startup command: $COMMAND"
 
 MANIFEST_FILE="/tmp/${APP_NAME}-deployment.yaml"
 
-# 动态获取 workspace 的真实 hostPath
-# 在 Olares 环境中，/root/workspace 可能是符号链接或挂载点
+# Dynamically resolve workspace hostPath
+# In Olares environment, /root/workspace may be a symlink or mount point
 WORKSPACE_PATH="/root/workspace"
 if [ -L "$WORKSPACE_PATH" ]; then
-    # 如果是符号链接，获取真实路径
+    # If symlink, get real path
     HOST_WORKSPACE_PATH=$(readlink -f "$WORKSPACE_PATH")
 elif [ -d "$WORKSPACE_PATH" ]; then
-    # 尝试从 mount 信息获取真实路径
+    # Try to get real path from mount info
     MOUNT_INFO=$(df "$WORKSPACE_PATH" 2>/dev/null | tail -1 | awk '{print $NF}')
     if [ "$MOUNT_INFO" != "/" ] && [ -n "$MOUNT_INFO" ]; then
         HOST_WORKSPACE_PATH="$MOUNT_INFO"
     else
-        # 回退到默认路径
+        # Fallback to default path
         HOST_WORKSPACE_PATH="$WORKSPACE_PATH"
     fi
 else
     HOST_WORKSPACE_PATH="$WORKSPACE_PATH"
 fi
 
-log_step "生成 Kubernetes manifest..."
+log_step "Generating Kubernetes manifest..."
 echo "  Workspace hostPath: $HOST_WORKSPACE_PATH"
 
 if [ -n "$COMMAND" ]; then
@@ -189,27 +189,27 @@ spec:
     name: http
 EOF
 
-log_info "Manifest 已生成: $MANIFEST_FILE"
+log_info "Manifest generated: $MANIFEST_FILE"
 
-log_step "部署到 Kubernetes..."
+log_step "Deploying to Kubernetes..."
 if $KUBECTL apply -f "$MANIFEST_FILE" 2>&1; then
-    log_info "部署成功！"
+    log_info "Deployment successful!"
 else
-    log_error "部署失败"
+    log_error "Deployment failed"
     exit 1
 fi
 
-log_step "等待 Pod 启动..."
+log_step "Waiting for Pod to start..."
 sleep 2
 
 for i in {1..30}; do
     POD_STATUS=$($KUBECTL get pods -n "$NAMESPACE" -l app="$APP_NAME" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
     
     if [ "$POD_STATUS" = "Running" ]; then
-        log_info "Pod 已启动"
+        log_info "Pod started"
         break
     elif [ "$POD_STATUS" = "Failed" ] || [ "$POD_STATUS" = "Error" ]; then
-        log_error "Pod 启动失败"
+        log_error "Pod failed to start"
         $KUBECTL get pods -n "$NAMESPACE" -l app="$APP_NAME"
         exit 1
     fi
@@ -220,10 +220,10 @@ done
 echo ""
 
 if [ "$POD_STATUS" != "Running" ]; then
-    log_warning "Pod 未在预期时间内启动，当前状态: $POD_STATUS"
+    log_warning "Pod did not start within expected time, current status: $POD_STATUS"
 fi
 
-log_step "部署信息:"
+log_step "Deployment info:"
 echo ""
 $KUBECTL get deployment "$APP_NAME" -n "$NAMESPACE"
 echo ""
@@ -232,13 +232,13 @@ echo ""
 $KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE"
 echo ""
 
-log_info "应用已部署完成！"
+log_info "App deployment complete!"
 
 echo ""
-echo "  🌐 访问地址: https://${OPENCODE_APPID}.${OWNER}.olares.com/${APP_NAME}/"
+echo "  🌐 Access URL: https://${OPENCODE_APPID}.${OWNER}.olares.com/${APP_NAME}/"
 echo ""
-echo "  📁 代码目录: /root/workspace/${APP_NAME}"
+echo "  📁 Code directory: /root/workspace/${APP_NAME}"
 echo ""
-echo "  查看日志: olares-manage logs ${APP_NAME}"
-echo "  删除应用: olares-manage delete ${APP_NAME}"
+echo "  View logs: olares-manage logs ${APP_NAME}"
+echo "  Delete app: olares-manage delete ${APP_NAME}"
 echo ""

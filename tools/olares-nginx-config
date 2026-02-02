@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Olares Nginx Configuration Generator
-为每个部署的应用自动生成 Nginx 反向代理配置
+Auto-generates Nginx reverse proxy configs for each deployed app
 
-配置架构:
-- /etc/nginx/conf.d/default.conf: 主配置，包含 include 和 location /
-- /etc/nginx/conf.d/dev/*.conf: 每个应用的 location 配置
+Config architecture:
+- /etc/nginx/conf.d/default.conf: Main config with include and location /
+- /etc/nginx/conf.d/dev/*.conf: Each app's location config
 """
 
 import subprocess
@@ -15,17 +15,17 @@ import os
 import shutil
 from pathlib import Path
 
-# 动态检测 kubectl 路径
+# Auto-detect kubectl path
 def find_kubectl():
-    # 优先使用 PATH 中的 kubectl
+    # Prefer kubectl from PATH
     kubectl = shutil.which("kubectl")
     if kubectl:
         return kubectl
-    # 检查常见位置
+    # Check common locations
     for path in ["/usr/local/bin/kubectl", "/tmp/kubectl", "/usr/bin/kubectl"]:
         if os.path.isfile(path) and os.access(path, os.X_OK):
             return path
-    raise RuntimeError("找不到 kubectl")
+    raise RuntimeError("kubectl not found")
 
 KUBECTL = find_kubectl()
 
@@ -44,10 +44,10 @@ DEFAULT_CONF_TEMPLATE = """server {
     listen 3000;
     server_name _;
     
-    # 包含所有应用路由（必须在 location / 之前）
+    # Include all app routes (must be before location /)
     include /etc/nginx/conf.d/dev/*.conf;
     
-    # OpenCode Server 默认路由（兜底）
+    # OpenCode Server default route (fallback)
     location / {
         proxy_pass http://localhost:4096;
         proxy_http_version 1.1;
@@ -58,13 +58,13 @@ DEFAULT_CONF_TEMPLATE = """server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         
-        # 超时设置 - 30分钟（匹配Olares平台）
+        # Timeout settings - 30 minutes (matches Olares platform)
         proxy_connect_timeout 1800s;
         proxy_send_timeout 1800s;
         proxy_read_timeout 1800s;
         send_timeout 1800s;
         
-        # 禁用缓冲，支持流式响应
+        # Disable buffering for streaming responses
         proxy_buffering off;
         proxy_cache off;
     }
@@ -73,14 +73,12 @@ DEFAULT_CONF_TEMPLATE = """server {
 
 
 def run_kubectl(args):
-    """运行 kubectl 命令"""
     cmd = [KUBECTL] + args + ["-n", NAMESPACE]
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
 
 
 def get_deployed_apps():
-    """获取所有已部署的应用"""
     code, stdout, stderr = run_kubectl([
         "get", "deployments",
         "-l", "deployed-by=opencode",
@@ -88,7 +86,7 @@ def get_deployed_apps():
     ])
     
     if code != 0:
-        print(f"错误：无法获取部署列表\n{stderr}", file=sys.stderr)
+        print(f"Error: Unable to get deployment list\n{stderr}", file=sys.stderr)
         return []
     
     data = json.loads(stdout)
@@ -110,7 +108,6 @@ def get_deployed_apps():
 
 
 def generate_nginx_config(app):
-    """为单个应用生成 Nginx 配置（只生成应用名路由，不生成端口路由）"""
     config = f"""# Auto-generated for {app['name']}
 location /{app['name']}/ {{
     proxy_pass http://{app['service']}:{app['port']}/;
@@ -137,94 +134,90 @@ location /{app['name']}/ {{
 
 
 def ensure_default_conf():
-    """确保 default.conf 包含正确的 include 指令"""
     default_conf = Path(DEFAULT_CONF)
     
     if not default_conf.exists():
-        print(f"✓ 创建 {DEFAULT_CONF}")
+        print(f"✓ Creating {DEFAULT_CONF}")
         default_conf.write_text(DEFAULT_CONF_TEMPLATE)
         return True
     
     content = default_conf.read_text()
     
-    # 检查是否已包含 include 指令
+    # Check if already contains include directive
     if "include /etc/nginx/conf.d/dev/*.conf" in content:
         return True
     
-    # 需要更新 default.conf
-    print(f"⚠️  更新 {DEFAULT_CONF} 以包含 include 指令")
+    # Need to update default.conf
+    print(f"⚠️  Updating {DEFAULT_CONF} to include directive")
     default_conf.write_text(DEFAULT_CONF_TEMPLATE)
     return True
 
 
 def write_nginx_configs(apps):
-    """写入所有 Nginx 配置"""
-    # 确保配置目录存在
+    # Ensure config directory exists
     Path(NGINX_CONF_DIR).mkdir(parents=True, exist_ok=True)
     
-    # 清空旧配置
+    # Clear old configs
     for f in Path(NGINX_CONF_DIR).glob("*.conf"):
         f.unlink()
     
-    # 写入应用配置
+    # Write app configs
     for app in apps:
         config_file = Path(NGINX_CONF_DIR) / f"{app['name']}.conf"
         config_content = generate_nginx_config(app)
         config_file.write_text(config_content)
-        print(f"✓ 生成配置: {config_file}")
+        print(f"✓ Generated config: {config_file}")
     
-    print(f"\n总共生成 {len(apps)} 个应用配置")
+    print(f"\nTotal: {len(apps)} app config(s) generated")
     
-    # 确保 default.conf 正确
+    # Ensure default.conf is correct
     ensure_default_conf()
 
 
 def reload_nginx():
-    """重载 Nginx 配置"""
-    print("\n测试 Nginx 配置...")
+    print("\nTesting Nginx configuration...")
     
-    # 使用 kill -HUP 方式重载，避免日志文件问题
+    # Use kill -HUP to reload, avoiding log file issues
     result = subprocess.run(["pgrep", "-f", "nginx: master"], capture_output=True, text=True)
     
     if result.returncode != 0:
-        # Nginx 未运行，启动它
-        print("启动 Nginx...")
+        # Nginx not running, start it
+        print("Starting Nginx...")
         result = subprocess.run(["nginx"], capture_output=True, text=True)
         if result.returncode == 0:
-            print("✓ Nginx 启动成功")
+            print("✓ Nginx started successfully")
             return True
         else:
-            print(f"✗ Nginx 启动失败:\n{result.stderr}", file=sys.stderr)
+            print(f"✗ Nginx failed to start:\n{result.stderr}", file=sys.stderr)
             return False
     
-    # Nginx 正在运行，重载配置
+    # Nginx is running, reload config
     pid = result.stdout.strip().split('\n')[0]
-    print("重载 Nginx...")
+    print("Reloading Nginx...")
     result = subprocess.run(["kill", "-HUP", pid], capture_output=True, text=True)
     if result.returncode == 0:
-        print("✓ Nginx 重载成功")
+        print("✓ Nginx reloaded successfully")
         return True
     else:
-        print(f"✗ Nginx 重载失败:\n{result.stderr}", file=sys.stderr)
+        print(f"✗ Nginx reload failed:\n{result.stderr}", file=sys.stderr)
         return False
 
 
 def show_status():
-    """显示 Nginx 状态"""
     print("\n" + "="*60)
-    print("Nginx 代理状态")
+    print("Nginx Proxy Status")
     print("="*60)
     
     result = subprocess.run(["pgrep", "-a", "nginx"], capture_output=True, text=True)
     if result.returncode == 0:
-        print(f"✓ Nginx 正在运行")
+        print(f"✓ Nginx is running")
     else:
-        print("✗ Nginx 未运行")
+        print("✗ Nginx is not running")
     
     result = subprocess.run(["ss", "-tlnp"], capture_output=True, text=True)
     nginx_ports = [line for line in result.stdout.split('\n') if 'nginx' in line.lower()]
     if nginx_ports:
-        print("\nNginx 监听端口:")
+        print("\nNginx listening ports:")
         for line in nginx_ports:
             print(f"  {line}")
 
@@ -234,31 +227,31 @@ def main():
         show_status()
         return
     
-    print("Olares Nginx 配置生成器")
+    print("Olares Nginx Config Generator")
     print("="*60)
     
-    print("\n1. 扫描已部署的应用...")
+    print("\n1. Scanning deployed apps...")
     apps = get_deployed_apps()
     
     if not apps:
-        print("  未找到已部署的应用")
-        # 仍然确保 default.conf 正确
+        print("  No deployed apps found")
+        # Still ensure default.conf is correct
         ensure_default_conf()
         return
     
-    print(f"  找到 {len(apps)} 个应用:")
+    print(f"  Found {len(apps)} app(s):")
     for app in apps:
-        print(f"    - {app['name']} (端口 {app['port']})")
+        print(f"    - {app['name']} (port {app['port']})")
     
-    print("\n2. 生成 Nginx 配置...")
+    print("\n2. Generating Nginx configs...")
     write_nginx_configs(apps)
     
-    print("\n3. 应用配置...")
+    print("\n3. Applying configuration...")
     if reload_nginx():
         show_status()
-        print("\n✅ 配置完成！")
+        print("\n✅ Configuration complete!")
     else:
-        print("\n❌ 配置失败")
+        print("\n❌ Configuration failed")
         sys.exit(1)
 
 

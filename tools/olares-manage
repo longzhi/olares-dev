@@ -2,7 +2,7 @@
 
 set -e
 
-# 动态检测 kubectl 路径
+# Auto-detect kubectl path
 if command -v kubectl &> /dev/null; then
     KUBECTL=$(command -v kubectl)
 elif [ -x "/usr/local/bin/kubectl" ]; then
@@ -10,7 +10,7 @@ elif [ -x "/usr/local/bin/kubectl" ]; then
 elif [ -x "/tmp/kubectl" ]; then
     KUBECTL="/tmp/kubectl"
 else
-    echo "错误：找不到 kubectl" >&2
+    echo "Error: kubectl not found" >&2
     exit 1
 fi
 
@@ -35,7 +35,7 @@ function log_step() {
 }
 
 function list_apps() {
-    log_step "已部署的应用列表"
+    log_step "Deployed applications"
     echo ""
     
     $KUBECTL get deployments -n "$NAMESPACE" -l deployed-by=opencode -o custom-columns=\
@@ -44,7 +44,7 @@ IMAGE:.spec.template.spec.containers[0].image,\
 PORT:.spec.template.spec.containers[0].ports[0].containerPort,\
 READY:.status.readyReplicas,\
 AGE:.metadata.creationTimestamp 2>/dev/null || {
-        log_error "获取应用列表失败"
+        log_error "Failed to get app list"
         return 1
     }
     
@@ -55,15 +55,15 @@ function show_app_info() {
     local APP_NAME="$1"
     
     if [ -z "$APP_NAME" ]; then
-        log_error "请指定应用名称"
+        log_error "Please specify app name"
         return 1
     fi
     
-    log_step "应用详情: $APP_NAME"
+    log_step "App details: $APP_NAME"
     echo ""
     
     $KUBECTL get deployment "$APP_NAME" -n "$NAMESPACE" || {
-        log_error "应用不存在: $APP_NAME"
+        log_error "App not found: $APP_NAME"
         return 1
     }
     
@@ -72,7 +72,7 @@ function show_app_info() {
     
     echo ""
     $KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE" 2>/dev/null || {
-        log_error "Service 不存在"
+        log_error "Service not found"
     }
     
     echo ""
@@ -80,7 +80,7 @@ function show_app_info() {
     PORT=$($KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)
     
     if [ -n "$CLUSTER_IP" ]; then
-        log_info "访问地址:"
+        log_info "Access URLs:"
         echo "  http://${APP_NAME}-svc.${NAMESPACE}.svc.cluster.local:${PORT}"
         echo "  http://${CLUSTER_IP}:${PORT}"
     fi
@@ -93,11 +93,11 @@ function show_logs() {
     local FOLLOW="${2:-}"
     
     if [ -z "$APP_NAME" ]; then
-        log_error "请指定应用名称"
+        log_error "Please specify app name"
         return 1
     fi
     
-    log_step "查看日志: $APP_NAME"
+    log_step "Viewing logs: $APP_NAME"
     
     if [ "$FOLLOW" = "-f" ] || [ "$FOLLOW" = "--follow" ]; then
         $KUBECTL logs -n "$NAMESPACE" -l app="$APP_NAME" -f
@@ -110,19 +110,19 @@ function delete_app() {
     local APP_NAME="$1"
     
     if [ -z "$APP_NAME" ]; then
-        log_error "请指定应用名称"
+        log_error "Please specify app name"
         return 1
     fi
     
-    log_step "删除应用: $APP_NAME"
+    log_step "Deleting app: $APP_NAME"
     
     $KUBECTL delete deployment "$APP_NAME" -n "$NAMESPACE" 2>/dev/null && \
-        log_info "Deployment 已删除" || \
-        log_error "Deployment 删除失败或不存在"
+        log_info "Deployment deleted" || \
+        log_error "Deployment deletion failed or not found"
     
     $KUBECTL delete service "${APP_NAME}-svc" -n "$NAMESPACE" 2>/dev/null && \
-        log_info "Service 已删除" || \
-        log_error "Service 删除失败或不存在"
+        log_info "Service deleted" || \
+        log_error "Service deletion failed or not found"
     
     echo ""
 }
@@ -131,17 +131,17 @@ function test_app() {
     local APP_NAME="$1"
     
     if [ -z "$APP_NAME" ]; then
-        log_error "请指定应用名称"
+        log_error "Please specify app name"
         return 1
     fi
     
-    log_step "测试应用连接: $APP_NAME"
+    log_step "Testing app connection: $APP_NAME"
     
     CLUSTER_IP=$($KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
     PORT=$($KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)
     
     if [ -z "$CLUSTER_IP" ]; then
-        log_error "无法获取 Service 信息"
+        log_error "Unable to get Service info"
         return 1
     fi
     
@@ -149,10 +149,10 @@ function test_app() {
     echo ""
     
     if curl -s --max-time 5 "http://${CLUSTER_IP}:${PORT}" > /dev/null 2>&1; then
-        log_info "应用响应正常"
+        log_info "App responding normally"
         curl -s "http://${CLUSTER_IP}:${PORT}" | head -20
     else
-        log_error "应用无响应"
+        log_error "App not responding"
         return 1
     fi
     
@@ -161,23 +161,23 @@ function test_app() {
 
 function show_usage() {
     cat <<EOF
-OpenCode 应用管理工具
+OpenCode App Management Tool
 
-用法: $0 <命令> [参数]
+Usage: $0 <command> [arguments]
 
-命令:
-  list                      列出所有已部署的应用
-  info <app-name>           显示应用详细信息
-  logs <app-name> [-f]      查看应用日志 (-f 持续跟踪)
-  delete <app-name>         删除应用
-  test <app-name>           测试应用连接
+Commands:
+  list                      List all deployed apps
+  info <app-name>           Show app details
+  logs <app-name> [-f]      View app logs (-f for follow)
+  delete <app-name>         Delete app
+  test <app-name>           Test app connection
 
-示例:
+Examples:
   $0 list
   $0 info flask-hello
   $0 logs flask-hello -f
   $0 delete flask-hello
-    $0 test my-app
+  $0 test my-app
 
 EOF
 }
@@ -204,7 +204,7 @@ case "$COMMAND" in
         show_usage
         ;;
     *)
-        log_error "未知命令: $COMMAND"
+        log_error "Unknown command: $COMMAND"
         echo ""
         show_usage
         exit 1
