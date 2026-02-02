@@ -271,6 +271,21 @@ echo ""
 $KUBECTL get service "${APP_NAME}-svc" -n "$NAMESPACE"
 echo ""
 
+# Auto-configure Nginx reverse proxy
+log_step "Configuring Nginx reverse proxy..."
+NGINX_CONFIG_SCRIPT="/root/.local/bin/olares-nginx-config"
+if [ -f "$NGINX_CONFIG_SCRIPT" ]; then
+    if python3 "$NGINX_CONFIG_SCRIPT" 2>&1; then
+        log_info "Nginx configured successfully"
+    else
+        log_warning "Nginx configuration failed, you may need to run manually:"
+        echo "  python3 $NGINX_CONFIG_SCRIPT"
+    fi
+else
+    log_warning "Nginx config script not found at $NGINX_CONFIG_SCRIPT"
+    echo "  Please configure Nginx manually"
+fi
+
 log_info "App deployment complete!"
 
 echo ""

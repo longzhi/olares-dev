@@ -131,8 +131,7 @@ User confirms → Execute deployment
 # Example
 /root/.local/bin/olares-deploy todo-app python:3.11-slim 8080 "pip install -r requirements.txt && python app.py"
 
-# Must update Nginx after deployment
-python3 /root/.local/bin/olares-nginx-config
+# Note: Nginx is auto-configured after deployment (no manual step needed)
 ```
 
 ### Deployment Mechanism (ConfigMap)
