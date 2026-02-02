@@ -16,8 +16,19 @@ from pathlib import Path
 class OlaresDeployer:
     """Deploy applications to Olares DevBox with automatic external access"""
     
+    @staticmethod
+    def _find_kubectl() -> str:
+        import shutil
+        kubectl = shutil.which("kubectl")
+        if kubectl:
+            return kubectl
+        for path in ["/usr/local/bin/kubectl", "/tmp/kubectl", "/usr/bin/kubectl"]:
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+        raise RuntimeError("找不到 kubectl")
+    
     def __init__(self):
-        self.kubectl = "/tmp/kubectl"
+        self.kubectl = self._find_kubectl()
         self.deploy_script = "/root/.local/bin/olares-deploy"
         self.manage_script = "/root/.local/bin/olares-manage"
         self.urls_script = "/root/.local/bin/olares-urls"

@@ -116,10 +116,10 @@ export default defineConfig({
 ### 502 Bad Gateway
 ```bash
 # 检查 Pod 是否运行
-/tmp/kubectl get pods -n $NAMESPACE -l app=my-app
+kubectl get pods -n $NAMESPACE -l app=my-app
 
 # 检查 Service
-/tmp/kubectl get svc -n $NAMESPACE my-app-svc
+kubectl get svc -n $NAMESPACE my-app-svc
 ```
 
 ### 404 Not Found
@@ -134,7 +134,7 @@ python3 /root/.local/bin/olares-nginx-config
 ### 应用无法外部访问
 ```bash
 # 检查入口端口配置（应为 3000）
-/tmp/kubectl get deployment -n $NAMESPACE -o jsonpath='{.metadata.annotations}'
+kubectl get deployment -n $NAMESPACE -o jsonpath='{.metadata.annotations}'
 ```
 
 ## ConfigMap 部署代码
@@ -143,7 +143,7 @@ python3 /root/.local/bin/olares-nginx-config
 
 ```bash
 # 创建 ConfigMap
-/tmp/kubectl create configmap myapp-code -n $NAMESPACE \
+kubectl create configmap myapp-code -n $NAMESPACE \
   --from-file=app.py=/root/workspace/myapp/app.py \
   --from-file=index.html=/root/workspace/myapp/static/index.html
 ```

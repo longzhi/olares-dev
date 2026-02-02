@@ -9,15 +9,23 @@ NC='\033[0m'
 echo -e "${GREEN}Olares DevBox Deployment Environment Initialization${NC}"
 echo ""
 
-KUBECTL_PATH="/tmp/kubectl"
-
-if [ ! -f "$KUBECTL_PATH" ]; then
+# 检测 kubectl 路径
+KUBECTL_PATH=""
+if command -v kubectl &> /dev/null; then
+    KUBECTL_PATH=$(command -v kubectl)
+    echo -e "${GREEN}✓ kubectl found at: $KUBECTL_PATH${NC}"
+elif [ -x "/usr/local/bin/kubectl" ]; then
+    KUBECTL_PATH="/usr/local/bin/kubectl"
+    echo -e "${GREEN}✓ kubectl found at: $KUBECTL_PATH${NC}"
+elif [ -x "/tmp/kubectl" ]; then
+    KUBECTL_PATH="/tmp/kubectl"
+    echo -e "${GREEN}✓ kubectl found at: $KUBECTL_PATH${NC}"
+else
+    KUBECTL_PATH="/tmp/kubectl"
     echo -e "${YELLOW}kubectl not found, downloading...${NC}"
     curl -LO "https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl" -o "$KUBECTL_PATH" 2>/dev/null
     chmod +x "$KUBECTL_PATH"
-    echo -e "${GREEN}✓ kubectl installed${NC}"
-else
-    echo -e "${GREEN}✓ kubectl already installed${NC}"
+    echo -e "${GREEN}✓ kubectl installed to $KUBECTL_PATH${NC}"
 fi
 
 if [ -f /var/run/secrets/kubernetes.io/serviceaccount/namespace ]; then

@@ -2,7 +2,18 @@
 
 set -e
 
-KUBECTL="/tmp/kubectl"
+# 动态检测 kubectl 路径
+if command -v kubectl &> /dev/null; then
+    KUBECTL=$(command -v kubectl)
+elif [ -x "/usr/local/bin/kubectl" ]; then
+    KUBECTL="/usr/local/bin/kubectl"
+elif [ -x "/tmp/kubectl" ]; then
+    KUBECTL="/tmp/kubectl"
+else
+    echo "错误：找不到 kubectl" >&2
+    exit 1
+fi
+
 NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || echo "default")
 OWNER=$(echo "$NAMESPACE" | sed 's/.*-//')
 
@@ -53,7 +64,27 @@ echo "  Namespace: $NAMESPACE"
 
 MANIFEST_FILE="/tmp/${APP_NAME}-deployment.yaml"
 
+# 动态获取 workspace 的真实 hostPath
+# 在 Olares 环境中，/root/workspace 可能是符号链接或挂载点
+WORKSPACE_PATH="/root/workspace"
+if [ -L "$WORKSPACE_PATH" ]; then
+    # 如果是符号链接，获取真实路径
+    HOST_WORKSPACE_PATH=$(readlink -f "$WORKSPACE_PATH")
+elif [ -d "$WORKSPACE_PATH" ]; then
+    # 尝试从 mount 信息获取真实路径
+    MOUNT_INFO=$(df "$WORKSPACE_PATH" 2>/dev/null | tail -1 | awk '{print $NF}')
+    if [ "$MOUNT_INFO" != "/" ] && [ -n "$MOUNT_INFO" ]; then
+        HOST_WORKSPACE_PATH="$MOUNT_INFO"
+    else
+        # 回退到默认路径
+        HOST_WORKSPACE_PATH="$WORKSPACE_PATH"
+    fi
+else
+    HOST_WORKSPACE_PATH="$WORKSPACE_PATH"
+fi
+
 log_step "生成 Kubernetes manifest..."
+echo "  Workspace hostPath: $HOST_WORKSPACE_PATH"
 
 if [ -n "$COMMAND" ]; then
     CONTAINER_COMMAND='
@@ -137,7 +168,7 @@ spec:
       volumes:
       - name: workspace
         hostPath:
-          path: /root/workspace
+          path: ${HOST_WORKSPACE_PATH}
           type: DirectoryOrCreate
 ---
 apiVersion: v1

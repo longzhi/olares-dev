@@ -12,9 +12,22 @@ import subprocess
 import json
 import sys
 import os
+import shutil
 from pathlib import Path
 
-KUBECTL = "/tmp/kubectl"
+# 动态检测 kubectl 路径
+def find_kubectl():
+    # 优先使用 PATH 中的 kubectl
+    kubectl = shutil.which("kubectl")
+    if kubectl:
+        return kubectl
+    # 检查常见位置
+    for path in ["/usr/local/bin/kubectl", "/tmp/kubectl", "/usr/bin/kubectl"]:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    raise RuntimeError("找不到 kubectl")
+
+KUBECTL = find_kubectl()
 
 def get_namespace():
     try:
