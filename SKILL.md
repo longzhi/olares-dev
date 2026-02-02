@@ -17,7 +17,7 @@ When executing any development task, you **MUST** follow these rules:
 | # | Rule | Correct Approach | Violation (= You Failed) |
 |---|------|------------------|--------------------------|
 | 1 | **After dev → Ask to publish** | Response must end with publish prompt (see template below) | Omit publish prompt, end with "let me know if you have questions" |
-| 2 | **Database → PostgreSQL** | Use PostgreSQL directly when persistence is needed | Ask user which database, recommend SQLite |
+| 2 | **Database → PostgreSQL + schema** | Use PostgreSQL with dedicated schema per app (not public) | Ask which DB, use public schema, recommend SQLite |
 | 3 | **Directory → Fixed location** | Put project in `/root/workspace/<app-name>/` | Ask user where to put the project |
 | 4 | **API paths → Relative paths** | Frontend API requests use relative paths or dynamic basePath | Use absolute paths like `/api/xxx` |
 
@@ -34,17 +34,43 @@ After development is complete, your response **MUST** end with this format:
 **Deploy to Olares?** Reply "publish" for one-click deployment.
 ```
 
-### PostgreSQL Connection (Rule 2)
+### PostgreSQL + Schema Isolation (Rule 2)
+
+Each app **MUST** use its own schema. **NEVER** use the public schema.
 
 ```python
 import os
-conn = psycopg2.connect(
-    host=os.environ.get('DB_HOST'),
-    port=os.environ.get('DB_PORT', '5432'),
-    user=os.environ.get('DB_USER'),
-    password=os.environ.get('DB_PASSWORD'),
-    database=os.environ.get('DB_DATABASE')
-)
+import psycopg2
+
+# Create dedicated schema for this app
+APP_NAME = "todo-app"
+SCHEMA = APP_NAME.replace('-', '_')  # todo_app
+
+def get_db():
+    conn = psycopg2.connect(
+        host=os.environ.get('DB_HOST'),
+        port=os.environ.get('DB_PORT', '5432'),
+        user=os.environ.get('DB_USER'),
+        password=os.environ.get('DB_PASSWORD'),
+        database=os.environ.get('DB_DATABASE'),
+        options=f'-c search_path={SCHEMA}'  # Use dedicated schema
+    )
+    return conn
+
+def init_db():
+    conn = psycopg2.connect(...)  # Without options first
+    cur = conn.cursor()
+    cur.execute(f'CREATE SCHEMA IF NOT EXISTS {SCHEMA}')
+    cur.execute(f'SET search_path TO {SCHEMA}')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS todos (
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            completed BOOLEAN DEFAULT FALSE
+        )
+    ''')
+    conn.commit()
+    conn.close()
 ```
 
 ### API Path Handling (Rule 4)
@@ -197,6 +223,7 @@ App created and tested:
 
 ```
 First, which database would you like? PostgreSQL, MySQL, or SQLite?  ← Violates Rule 2
+CREATE TABLE todos (...)  ← Violates Rule 2 (no schema, uses public by default)
 Where would you like to put the project?  ← Violates Rule 3
 App created! Let me know if you have questions.  ← Violates Rule 1
 fetch('/api/todos')  ← Violates Rule 4 (should use relative path)
